@@ -1,5 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { homedir } from 'node:os'
 import type { JsonObject } from '../shared/types.ts'
 import { isObject } from '../shared/is-object.ts'
 
@@ -90,6 +91,24 @@ async function listEntries(
   }
 }
 
+/** Reads the Pi default model from its settings file, when present. */
+export async function defaultModelFromSettings(
+  agentDir?: string,
+): Promise<{ id: string; provider: string } | undefined> {
+  const dir = agentDir ?? process.env.PI_CODING_AGENT_DIR ?? join(homedir(), '.pi', 'agent')
+  try {
+    const settings = JSON.parse(await readFile(join(dir, 'settings.json'), 'utf8')) as JsonObject
+    if (
+      typeof settings.defaultProvider === 'string' && typeof settings.defaultModel === 'string'
+    ) {
+      return { provider: settings.defaultProvider, id: settings.defaultModel }
+    }
+  } catch {
+    // No settings file — callers fall back to cheapest.
+  }
+  return undefined
+}
+
 /** Selects the cheapest usable model with the same deterministic ordering as pi-auto-title. */
 export function cheapestAvailableModel(
   response: JsonObject,
@@ -102,6 +121,29 @@ export function cheapestAvailableModel(
     || Number(left.reasoning) - Number(right.reasoning)
   )
   return models[0]
+}
+
+/**
+ * Picks the model for a disposable prompt: prefers Pi's configured default when it
+ * is available, and otherwise falls back to the cheapest available model.
+ */
+export async function preferredAvailableModel(
+  response: JsonObject,
+  agentDir?: string,
+): Promise<{ id: string; provider: string } | undefined> {
+  const models = isObject(response.data) && Array.isArray(response.data.models)
+    ? response.data.models
+    : []
+  const configured = await defaultModelFromSettings(agentDir)
+  if (
+    configured
+    && models.some((m) =>
+      isModel(m) && m.provider === configured.provider && m.id === configured.id
+    )
+  ) {
+    return configured
+  }
+  return cheapestAvailableModel(response)
 }
 
 /** Returns the last assistant text from a completed disposable Pi session. */

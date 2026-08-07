@@ -3,7 +3,7 @@ import { copyFile, mkdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { ISOLATED_AGENT_DIR, PiProcess } from './pi-process.ts'
-import { assistantText, cheapestAvailableModel } from './prompt-improvement.ts'
+import { assistantText, preferredAvailableModel } from './prompt-improvement.ts'
 import type { JsonObject } from '../shared/types.ts'
 import { isObject } from '../shared/is-object.ts'
 
@@ -92,9 +92,9 @@ export async function runIsolatedPrompt(
       })
     } else {
       const available = await pi.request({ type: 'get_available_models' })
-      const cheapest = cheapestAvailableModel(available)
-      if (!cheapest) throw new Error('No model is available to run the prompt')
-      await pi.request({ type: 'set_model', provider: cheapest.provider, modelId: cheapest.id })
+      const selected = await preferredAvailableModel(available, ISOLATED_AGENT_DIR)
+      if (!selected) throw new Error('No model is available to run the prompt')
+      await pi.request({ type: 'set_model', provider: selected.provider, modelId: selected.id })
     }
 
     const settled = waitForPiEvent(pi, 'agent_settled')
