@@ -62,7 +62,7 @@ export const commandDefinitions: CommandDefinition[] = [
 export const defaultShortcuts: Partial<Record<CommandId, string>> = {
   'new-session': 'alt+n',
   abort: 'escape',
-  'open-thinking': 'alt+2',
+  'open-thinking': 'alt+shift+2',
   'open-model': 'alt+1',
   'open-agent': 'alt+3',
   'copy-last-response': 'alt+c',

@@ -22,6 +22,7 @@
     "test": "node --test",
     "eval:documentation-routing": "node --test evals/documentation-routing.ts",
     "eval:commit-message": "node --test evals/commit-message.ts",
+    "bench:snapshot": "node scripts/bench-snapshot.ts",
     "preview": "vite preview --host 127.0.0.1",
     "prepare": "husky"
   },
@@ -36,6 +37,7 @@
     "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/diff": "^7.0.2",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.17",

@@ -11,6 +11,14 @@ import {
 } from './session-entries.ts'
 import { loadPromptTemplates } from './prompt-templates.ts'
 
+/**
+ * Optional RPC counter for the §4.1 snapshot benchmark. Active only when
+ * `PI_LIVECRAFT_DEBUG_RPC=1` so normal operation stays zero-overhead. A warm
+ * cache refresh must issue exactly one command (`get_entries {since}`).
+ */
+export const snapshotRpcDebug: { commands: number } | null =
+  process.env.PI_LIVECRAFT_DEBUG_RPC === '1' ? { commands: 0 } : null
+
 /** The subset of ManagerClient used to issue Pi RPC commands from the cache. */
 export interface SnapshotCommandClient {
   request(
@@ -133,6 +141,7 @@ export class SnapshotCache {
     sessionId: string,
     command: JsonObject,
   ): Promise<JsonObject> {
+    if (snapshotRpcDebug) snapshotRpcDebug.commands += 1
     const response = await client.request({ action: 'command', sessionId, command })
     if (!isObject(response)) throw new Error('Invalid response from Pi manager')
     return response
