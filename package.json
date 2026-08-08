@@ -21,6 +21,7 @@
     "lint": "oxlint .",
     "test": "node --test",
     "eval:documentation-routing": "node --test evals/documentation-routing.ts",
+    "eval:commit-message": "node --test evals/commit-message.ts",
     "preview": "vite preview --host 127.0.0.1",
     "prepare": "husky"
   },

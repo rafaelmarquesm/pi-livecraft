@@ -235,6 +235,15 @@ export async function revertGitCommit(cwd: string, hash: string): Promise<GitRev
   })
 }
 
+/** Generates a one-line conventional commit message for the changes in `cwd` via an isolated Pi prompt. */
+export async function generateCommitMessage(cwd: string): Promise<string> {
+  const result = await request<{ message: string }>('/api/git/commit-message', {
+    method: 'POST',
+    body: JSON.stringify({ cwd }),
+  })
+  return result.message
+}
+
 /** Persists a draft using Pi's project or user prompt-template convention. */
 export async function savePrompt(
   cwd: string,

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { generateCommitMessage } from '../../api.ts'
 import { Tooltip } from '../../components/Tooltip.tsx'
 import type {
   GitFileDiff,
@@ -11,7 +12,7 @@ import { WidgetLayout } from '../right-sidebar/WidgetLayout.tsx'
 import { parseGitDiff } from './git-diff.ts'
 
 /** Local git-error target — which element to shake on failure. */
-type ErrorTarget = 'push' | 'commit' | 'discard' | 'refresh'
+type ErrorTarget = 'push' | 'commit' | 'discard' | 'refresh' | 'generate'
 
 /** Owns Git-specific selection, actions, and diff rendering inside the sidebar. */
 export function GitWidget(
@@ -80,6 +81,23 @@ export function GitWidget(
       await onRefresh()
     } catch (error) {
       reportError(error, 'commit')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** Asks Pi for a conventional commit message and fills the box for review. Never commits directly. */
+  async function generate(): Promise<void> {
+    if (!snapshot.root) {
+      reportError(new Error('Git repository root is unavailable'), 'generate')
+      return
+    }
+    setBusy(true)
+    clearError()
+    try {
+      setMessage(await generateCommitMessage(snapshot.root))
+    } catch (error) {
+      reportError(error, 'generate')
     } finally {
       setBusy(false)
     }
@@ -189,6 +207,14 @@ export function GitWidget(
             value={message}
           />
           <div className='git-action-buttons'>
+            <button
+              className={errorTarget === 'generate' ? 'shake' : ''}
+              disabled={busy || !hasChanges}
+              onClick={() => void generate()}
+              type='button'
+            >
+              Generate
+            </button>
             <button
               className={errorTarget === 'commit' ? 'shake' : ''}
               disabled={busy || !hasChanges || !message.trim()}

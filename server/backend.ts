@@ -6,6 +6,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { ManagerClient } from './manager-client.ts'
 import { ManagerRuntimeMonitor } from './manager-runtime-monitor.ts'
 import { listRecentPiSessions, loadPiSession } from './pi-session-store.ts'
+import { EmptyDiffError, generateCommitMessage } from './features/git/commit-message.ts'
 import {
   commitChanges,
   discardChanges,
@@ -302,6 +303,21 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
       200,
       await getGitFileDiff(cwd, path, url.searchParams.get('commit') ?? undefined),
     )
+    return
+  }
+
+  if (method === 'POST' && url.pathname === '/api/git/commit-message') {
+    const body = await readJsonBody(request)
+    if (typeof body.cwd !== 'string') throw new HttpError(400, 'Working directory is required')
+    const cwd = await resolveWorkingDirectory(body.cwd)
+    let result: { message: string; cost?: number }
+    try {
+      result = await withTimeout(generateCommitMessage(cwd), 5 * 60_000)
+    } catch (error) {
+      if (error instanceof EmptyDiffError) throw new HttpError(409, error.message)
+      throw error
+    }
+    sendJson(response, 200, result)
     return
   }
 
@@ -671,6 +687,23 @@ async function readJsonBody(request: IncomingMessage): Promise<JsonObject> {
   } catch {
     throw new HttpError(400, 'Invalid JSON body')
   }
+}
+
+/** Bounds an operation with a timeout, mirroring the run-prompt route's five-minute cap. */
+function withTimeout<T>(promise: Promise<T>, milliseconds: number): Promise<T> {
+  const { promise: bounded, resolve, reject } = Promise.withResolvers<T>()
+  const timer = setTimeout(() => reject(new Error('Operation timed out')), milliseconds)
+  promise.then(
+    (value) => {
+      clearTimeout(timer)
+      resolve(value)
+    },
+    (error) => {
+      clearTimeout(timer)
+      reject(error)
+    },
+  )
+  return bounded
 }
 
 /** Serves the frontend build while preventing an HTTP path from escaping the distribution directory. */
