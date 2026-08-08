@@ -17,6 +17,11 @@ import {
 } from './prompt-improvement.ts'
 import { runIsolatedPrompt } from './run-isolated-prompt.ts'
 import { isObject } from '../shared/is-object.ts'
+import {
+  isBlockingUiRequest,
+  sanitizeExtensionUiRequest,
+  stripAnsi,
+} from '../shared/extension-ui.ts'
 import type {
   JsonObject,
   ManagerEvent,
@@ -558,6 +563,14 @@ function handlePiEvent(session: ManagedSession, event: JsonObject): void {
     session.bufferedEvents.push(event)
     return
   }
+  // Transport hardening (T-EXT-5): every extension_ui_request broadcast —
+  // live or replayed from the buffer — is sanitized here, in the single place
+  // that broadcasts, so extension text never reaches the frontend with ANSI
+  // escapes or unbounded size. Blocking methods pass through unchanged and
+  // still enter pendingUi below.
+  if (event.type === 'extension_ui_request') {
+    event = sanitizeExtensionUiRequest(event)
+  }
   if (event.type === 'session_info_changed') {
     session.summary.name = typeof event.name === 'string' && event.name.trim()
       ? event.name.trim()
@@ -583,18 +596,13 @@ function handlePiEvent(session: ManagedSession, event: JsonObject): void {
 
 function activeAgentFromStatus(statusText: unknown): string | undefined {
   if (typeof statusText !== 'string') return undefined
+  const plainText = stripAnsi(statusText)
   const prefix = 'Agent:'
-  const prefixIndex = statusText.indexOf(prefix)
+  const prefixIndex = plainText.indexOf(prefix)
   if (prefixIndex === -1) return undefined
-  const rawName = statusText.slice(prefixIndex + prefix.length)
-  const endIndex = rawName.indexOf('\u001b')
-  const name = rawName.slice(0, endIndex === -1 ? undefined : endIndex).trim()
-  return name || undefined
-}
-
-function isBlockingUiRequest(event: JsonObject): boolean {
-  return event.method === 'select' || event.method === 'confirm' || event.method === 'input'
-    || event.method === 'editor'
+  const name = plainText.slice(prefixIndex + prefix.length).trim()
+  if (name === '') return undefined
+  return name.length > 80 ? name.slice(0, 80) : name
 }
 
 function broadcast(event: ManagerEvent): void {

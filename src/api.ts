@@ -257,7 +257,6 @@ export interface RunPromptOptions {
   systemPrompt?: string
   thinkingLevel?: string
   model?: { provider: string; modelId: string }
-  extensions?: string[]
   tools?: string[]
   /** Disable automatic AGENTS.md/CLAUDE.md loading (default true). Set false to provide your own context. */
   includeContextFiles?: boolean

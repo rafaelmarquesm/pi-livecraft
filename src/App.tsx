@@ -21,6 +21,8 @@ import {
   subscribeManagerEvents,
 } from './api.ts'
 import { quotaRefreshAllowed } from '../shared/quota-refresh.ts'
+import { applyExtensionUiRequest, createExtensionUiState } from '../shared/extension-ui.ts'
+import type { ExtensionUiState } from '../shared/extension-ui.ts'
 import type {
   GitSnapshot,
   JsonObject,
@@ -30,11 +32,24 @@ import type {
 } from '../shared/types.ts'
 import { isObject } from '../shared/is-object.ts'
 import { Composer } from './features/composer/Composer.tsx'
+import { ExtensionStatusBar } from './features/extension-ui/ExtensionStatusBar.tsx'
+import { ExtensionWidgetHost } from './features/extension-ui/ExtensionWidgetHost.tsx'
 import { ToastStack, type Toast } from './features/notifications/ToastStack.tsx'
+import {
+  NotificationDecider,
+  type NotificationDecision,
+} from './features/notifications/notification-decider.ts'
+import {
+  createNativeNotifier,
+  nativeNotificationApi,
+} from './features/notifications/native-notifications.ts'
+import { documentTitleFor, faviconDataUrl } from './features/notifications/tab-title.ts'
+import { extensionDocumentTitle } from './features/extension-ui/document-title.ts'
 import { sessionActivity, type PiConnection } from './features/conversation/activity.ts'
 import { Conversation } from './features/conversation/Conversation.tsx'
 import { useConversationRuntime } from './features/conversation/useConversationRuntime.ts'
 import { AskUserQuestionDialog, ExtensionDialog } from './features/dialogs/Dialogs.tsx'
+import { ConfirmDialog } from './features/dialogs/ConfirmDialog.tsx'
 import {
   isAgentSelector,
   isAskUserQuestionDialog,
@@ -143,6 +158,20 @@ function App() {
   }, [agentOptionsLoading])
   const [dialog, setDialog] = useState<UiDialog | null>(null)
   const [toasts, setToasts] = useState<Toast[]>([])
+
+  // Extension UI host (M7): per-session display state reduced from
+  // extension_ui_request events, and the single confirm dialog resolving
+  // host-owned confirmations (git actions, editor-text replacement).
+  const [extensionUi, setExtensionUi] = useState<Record<string, ExtensionUiState>>({})
+  const [confirmHost, setConfirmHost] = useState<
+    {
+      title: string
+      message: string
+      confirmLabel?: string
+      cancelLabel?: string
+    } | null
+  >(null)
+  const confirmResolveRef = useRef<((ok: boolean) => void) | null>(null)
 
   // Workspace tools and sidebars
   const [workspaceSidebarWidth, setWorkspaceSidebarWidth] = useState(() =>
@@ -343,6 +372,8 @@ function App() {
     onWorkspaceSelected: handleWorkspaceSelected,
   })
   selectedIdRef.current = selectedId
+  const sessionsRef = useRef(sessions)
+  sessionsRef.current = sessions
 
   const startAndSelectSession = useCallback(
     (
@@ -468,6 +499,38 @@ function App() {
     void refreshSessions()
   }, [refreshSessions, removePendingRequest])
 
+  /** Opens the single confirm dialog and resolves with the user's decision (M7). */
+  const requestConfirm = useCallback(
+    (
+      title: string,
+      message: string,
+      labels?: { confirmLabel?: string; cancelLabel?: string },
+    ): Promise<boolean> =>
+      new Promise((resolve) => {
+        confirmResolveRef.current = resolve
+        setConfirmHost({ title, message, ...labels })
+      }),
+    [],
+  )
+  /** Settles the open confirm dialog and closes it. */
+  const resolveConfirm = useCallback((ok: boolean) => {
+    confirmResolveRef.current?.(ok)
+    confirmResolveRef.current = null
+    setConfirmHost(null)
+  }, [])
+
+  /** Asks before an extension prefill replaces a non-empty draft; applies via the draft mechanism when confirmed (E15). */
+  const handleEditorTextRejected = useCallback((sessionId: string, text: string) => {
+    void requestConfirm(
+      'Replace draft?',
+      'An extension wants to replace your current draft.',
+      { confirmLabel: 'Replace', cancelLabel: 'Keep' },
+    )
+      .then((replaced) => {
+        if (replaced) handleSessionDraft(sessionId, text)
+      })
+  }, [handleSessionDraft, requestConfirm])
+
   // Workspace capabilities
   /** Refreshes Git state for the current directory. Throws when requested so callers can handle the error. */
   const refreshGit = useCallback(async (cwd = workspacePath, notifyOnError = false) => {
@@ -560,10 +623,48 @@ function App() {
   // Selected session synchronization
   useEffect(() => setConversationNavigation(undefined), [selectedId])
 
+  // Native notification policy: one decider per session; the notifier guards
+  // the hidden-tab and permission rules, so decisions are additive to toasts.
+  const decidersRef = useRef(new Map<string, NotificationDecider>())
+  const nativeNotifierRef = useRef(
+    createNativeNotifier(nativeNotificationApi(), () => document.hidden || !document.hasFocus()),
+  )
+  /** Shows a native notification for a settle decision; clicking focuses and selects the session. */
+  const notifySessionSettled = useCallback((sessionId: string, decision: NotificationDecision) => {
+    const session = sessionsRef.current.find((candidate) => candidate.id === sessionId)
+    nativeNotifierRef.current({
+      sessionName: session?.name ?? 'Session',
+      reason: decision.reason,
+      sessionId,
+      onClick: () => {
+        window.focus()
+        setSelectedId(sessionId)
+      },
+    })
+  }, [setSelectedId])
+
   // Pi event stream
   /** Routes a live or replayed Pi event through cross-feature effects before the conversation runtime. */
   const handleManagerPiEvent = useCallback(
     (sessionId: string, event: JsonObject, sequence?: number): void => {
+      // Per-session extension UI display state (status, widgets, title, editor
+      // text). The shared reducer never stores the reserved keys, so the
+      // reserved-key effects below remain the single source for them.
+      if (event.type === 'extension_ui_request') {
+        setExtensionUi((current) => ({
+          ...current,
+          [sessionId]: applyExtensionUiRequest(
+            current[sessionId] ?? createExtensionUiState(),
+            event,
+          ),
+        }))
+      }
+      if (event.type === 'session_exited') decidersRef.current.delete(sessionId)
+      const decider = decidersRef.current.get(sessionId) ?? new NotificationDecider()
+      decidersRef.current.set(sessionId, decider)
+      const decision = decider.receive(event)
+      if (decision !== null) notifySessionSettled(sessionId, decision)
+
       if (event.type === 'session_info_changed') {
         const name = typeof event.name === 'string' && event.name.trim()
           ? event.name.trim()
@@ -656,10 +757,12 @@ function App() {
       flushLiveUpdates,
       handlePiEvent,
       markSessionCompleted,
+      notifySessionSettled,
       refreshSessionQuotas,
       scheduleGitRefresh,
       renameSession,
       selectCreatedSession,
+      setExtensionUi,
       showToast,
       updateSession,
     ],
@@ -681,6 +784,15 @@ function App() {
         managerEvent.event === 'manager_connected' || managerEvent.event === 'session_created'
         || managerEvent.event === 'session_exited' || managerEvent.event === 'session_reassigned'
       ) void refreshSessions()
+      if (managerEvent.event === 'session_exited') {
+        setExtensionUi((current) => {
+          if (!(managerEvent.sessionId in current)) return current
+          const next = { ...current }
+          delete next[managerEvent.sessionId]
+          return next
+        })
+        decidersRef.current.delete(managerEvent.sessionId)
+      }
       if (managerEvent.event === 'pi' && isObject(managerEvent.data))
         handleManagerPiEvent(
           managerEvent.sessionId,
@@ -698,6 +810,7 @@ function App() {
     handleManagerPiEvent,
     refreshSessions,
     resetEventSequence,
+    setExtensionUi,
     showToast,
   ])
 
@@ -706,6 +819,21 @@ function App() {
   const selectedSessionId = selectedSession?.id
   const selectedSessionStatus = selectedSession?.status
   const sessionIsLoading = Boolean(selectedSessionId && snapshotSessionId !== selectedSessionId)
+
+  // Live tab title (single writer) and running favicon badge.
+  const activitySuffix = selectedSession?.status === 'running'
+    ? `● ${selectedSession.name}`
+    : undefined
+  const anySessionRunning = sessions.some((session) => session.status === 'running')
+  useEffect(() => {
+    document.title = extensionDocumentTitle(extensionUi[selectedId]?.title)
+      ?? documentTitleFor(undefined, activitySuffix)
+  }, [selectedId, activitySuffix, extensionUi])
+  useEffect(() => {
+    const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
+    if (link === null) return
+    link.href = faviconDataUrl(anySessionRunning)
+  }, [anySessionRunning])
 
   // Manages loading overlay fade-in / fade-out around snapshot refresh.
   useEffect(() => {
@@ -724,11 +852,16 @@ function App() {
     return () => window.clearTimeout(loadingTimerRef.current)
   }, [selectedSessionId, sessionIsLoading])
 
-  const displayedActivity = selectedSession?.id && compactingSessionIds.has(selectedSession.id)
-    ? { kind: 'compacting' as const }
-    : selectedSession
+  const liveActivity = selectedSession
     ? sessionActivity(activity, selectedSession.status, piConnection)
     : null
+  // A live retry (provider or summarization) takes precedence so the composer
+  // can show "Retrying…" and offer Cancel retries instead of a stuck compaction.
+  const displayedActivity = liveActivity?.kind === 'retrying'
+    ? liveActivity
+    : selectedSession?.id && compactingSessionIds.has(selectedSession.id)
+    ? { kind: 'compacting' as const }
+    : liveActivity
 
   // Composer and session lifecycle
   const handleConversationError = useCallback(
@@ -765,7 +898,7 @@ function App() {
         const shouldNameSession = !isCommand && sentSession?.name === 'New session'
           && !snapshot
             .messages
-            .some((entry) => entry.role === 'user')
+            .some((entry) => entry.message.role === 'user')
         if (sentSession && shouldNameSession) nameSessionFromFirstPrompt(sentSession, message)
         await refreshSessions()
         setScrollToBottomRequest((current) => current + 1)
@@ -791,6 +924,35 @@ function App() {
   const handleComposerAbort = useCallback(() => sendPiCommand(selectedId, { type: 'abort' }), [
     selectedId,
   ])
+  const handleComposerAbortRetry = useCallback(
+    () => sendPiCommand(selectedId, { type: 'abort_retry' }),
+    [selectedId],
+  )
+  // Selected-session Pi behavior (E10/E11). Auto-compaction is reconciled from
+  // the get_state snapshot; auto-retry is write-only per E10 (Pi does not expose
+  // it for read-back), so it keeps an optimistic in-memory value per session.
+  const autoCompactionEnabled = isObject(snapshot.state)
+      && typeof snapshot.state.autoCompactionEnabled === 'boolean'
+    ? snapshot.state.autoCompactionEnabled
+    : null
+  const [autoRetryBySession, setAutoRetryBySession] = useState<Record<string, boolean>>({})
+  const handleSetAutoCompaction = useCallback((enabled: boolean) => {
+    if (!selectedId) return
+    void sendPiCommand(selectedId, { type: 'set_auto_compaction', enabled })
+      .then(() => refreshSnapshot(selectedId))
+      .catch((cause) => showToast('error', messageOf(cause)))
+  }, [refreshSnapshot, selectedId, showToast])
+  const handleSetAutoRetry = useCallback((enabled: boolean) => {
+    if (!selectedId) return
+    setAutoRetryBySession((current) => ({ ...current, [selectedId]: enabled }))
+    void sendPiCommand(selectedId, { type: 'set_auto_retry', enabled })
+      .catch((cause) => {
+        // Revert the optimistic value on transport failure so the toggle never
+        // lies about Pi's state.
+        setAutoRetryBySession((current) => ({ ...current, [selectedId]: !enabled }))
+        showToast('error', messageOf(cause))
+      })
+  }, [selectedId, showToast])
   const handlePromptImprovement = useCallback(
     (prompt: string, direction?: string) => improvePrompt(selectedId, prompt, direction),
     [selectedId],
@@ -1079,6 +1241,9 @@ function App() {
     || (activeRightWidget === 'analysis' && sessionAnalysis !== null)
     || (activeRightWidget === 'git' && gitSnapshot?.repository === true)
 
+  // Extension UI display state for the selected session (reduced in the event router).
+  const selectedExtensionUi = selectedSession ? extensionUi[selectedSession.id] : undefined
+
   return (
     <div
       className={`app-shell ${workspaceSidebarCollapsed ? 'workspace-sidebar-collapsed ' : ''}${
@@ -1210,6 +1375,17 @@ function App() {
                       />
                     )}
                     <ToastStack onDismiss={dismissToast} toasts={visibleToasts} />
+                    {selectedExtensionUi?.status.size
+                      ? <ExtensionStatusBar status={selectedExtensionUi.status} />
+                      : null}
+                    {selectedExtensionUi?.widgets.size
+                      ? (
+                        <ExtensionWidgetHost
+                          placement='aboveEditor'
+                          widgets={selectedExtensionUi.widgets}
+                        />
+                      )
+                      : null}
                     <Composer
                       key={selectedSession.id}
                       session={selectedSession}
@@ -1228,12 +1404,17 @@ function App() {
                         ? composerDraftRequest
                         : undefined}
                       onDraftApplied={markComposerDraftApplied}
+                      editorText={selectedExtensionUi?.editorText}
+                      onEditorTextRejected={(text) =>
+                        handleEditorTextRejected(selectedSession.id, text)}
                       showAgentSelector={snapshotSessionId !== selectedSession.id
                         || snapshot.commands.some((command) => command.name === 'agent')}
                       running={selectedSession.status === 'running'}
                       compacting={displayedActivity?.kind === 'compacting'}
+                      retrying={displayedActivity?.kind === 'retrying'}
                       onSend={handleComposerSend}
                       onAbort={handleComposerAbort}
+                      onAbortRetry={handleComposerAbortRetry}
                       onImprovePrompt={handlePromptImprovement}
                       onSavePrompt={handleSavePrompt}
                       onError={handleConversationError}
@@ -1241,6 +1422,14 @@ function App() {
                       onSelectOpened={handleComposerSelectOpened}
                       submitRequest={submitRequest}
                     />
+                    {selectedExtensionUi?.widgets.size
+                      ? (
+                        <ExtensionWidgetHost
+                          placement='belowEditor'
+                          widgets={selectedExtensionUi.widgets}
+                        />
+                      )
+                      : null}
                   </div>
                 </>
               )}
@@ -1306,6 +1495,7 @@ function App() {
         onCommit={async (message) => {
           await commitChanges(workspacePath, message)
         }}
+        onConfirm={(message) => requestConfirm('Confirm action', message)}
         onDiscard={async (path) => {
           await discardChanges(workspacePath, path)
         }}
@@ -1370,6 +1560,16 @@ function App() {
           onError={(cause) => showToast('error', messageOf(cause))}
         />
       )}
+      {confirmHost && (
+        <ConfirmDialog
+          cancelLabel={confirmHost.cancelLabel}
+          confirmLabel={confirmHost.confirmLabel}
+          message={confirmHost.message}
+          title={confirmHost.title}
+          onCancel={() => resolveConfirm(false)}
+          onConfirm={() => resolveConfirm(true)}
+        />
+      )}
       {commandPaletteOpen && (
         <CommandPalette
           commands={paletteCommands}
@@ -1403,6 +1603,12 @@ function App() {
             window.localStorage.setItem('pi-livecraft.shortcuts', JSON.stringify(defaultShortcuts))
           }}
           onClose={() => setSettingsOpen(false)}
+          sessionSelected={Boolean(selectedSession)}
+          autoCompactionEnabled={autoCompactionEnabled}
+          autoRetryEnabled={autoRetryBySession[selectedId] ?? false}
+          capabilities={snapshot.capabilities}
+          onSetAutoCompaction={handleSetAutoCompaction}
+          onSetAutoRetry={handleSetAutoRetry}
         />
       )}
     </div>

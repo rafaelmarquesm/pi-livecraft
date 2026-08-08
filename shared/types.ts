@@ -194,14 +194,30 @@ export interface PromptTemplate {
   description?: string
 }
 
+/** A visible conversation message with its stable session entry identity (M1). */
+export interface SessionMessage {
+  /** Stable session entry id; absent only for synthesized compaction placeholders. */
+  entryId?: string
+  /** Entry id of the parent, kept so the client can rebuild branch context without a second call. */
+  parentEntryId?: string
+  message: JsonObject
+}
+
+/** Capabilities of the connected Pi installation, used to gate UI (M5). */
+export interface PiCapabilities {
+  version: string
+  commands: Record<string, boolean>
+}
+
 export interface SessionSnapshot {
   state: JsonObject | null
-  messages: JsonObject[]
+  messages: SessionMessage[]
   models: JsonObject[]
   commands: JsonObject[]
   promptTemplates: PromptTemplate[]
   stats: SessionStats | null
   liveEvents: Array<{ data: JsonObject; sequence: number }>
+  capabilities: PiCapabilities | null
 }
 
 export interface OpenAiQuotaWindow {

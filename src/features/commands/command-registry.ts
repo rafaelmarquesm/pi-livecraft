@@ -1,4 +1,4 @@
-import type { JsonObject } from '../../../shared/types.ts'
+import type { SessionMessage } from '../../../shared/types.ts'
 import { isObject } from '../../../shared/is-object.ts'
 import { rightWidgetDefinitions, type RightWidget } from '../right-sidebar/right-sidebar.ts'
 
@@ -128,9 +128,9 @@ export function shortcutConflicts(shortcuts: Partial<Record<CommandId, string>>)
 }
 
 /** Extracts copyable text from an assistant response without changing its Markdown. */
-export function lastAssistantText(messages: JsonObject[]): string {
+export function lastAssistantText(messages: SessionMessage[]): string {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]
+    const message = messages[index].message
     if (message.role !== 'assistant') continue
     const content = message.content ?? message.output
     if (typeof content === 'string' && content.trim()) return content

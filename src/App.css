@@ -14,6 +14,7 @@
 @import "./features/dialogs/dialogs.css";
 @import "./features/settings/settings.css";
 @import "./features/composer/composer.css";
+@import "./features/extension-ui/extension-ui.css";
 @import "./features/notifications/notifications.css";
 @import "./features/manager/manager.css";
 @import "./styles/responsive.css";

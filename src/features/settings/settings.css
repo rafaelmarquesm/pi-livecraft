@@ -230,6 +230,99 @@
 .terminal-command-error {
   color: var(--danger) !important;
 }
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  color: var(--ink);
+  font-size: 13px;
+}
+.settings-toggle-row > span {
+  min-width: 0;
+}
+.settings-toggle-row small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.settings-toggle-row input[role="switch"] {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--line);
+  cursor: pointer;
+  position: relative;
+  transition: border-color 180ms ease-out, background 180ms ease-out;
+}
+.settings-toggle-row input[role="switch"]::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 30%);
+  transition: transform 180ms ease-out;
+}
+.settings-toggle-row input[role="switch"]:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.settings-toggle-row input[role="switch"]:checked::after {
+  transform: translateX(14px);
+}
+.settings-toggle-row input[role="switch"]:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.settings-toggle-row input[role="switch"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.about-version {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.about-version b {
+  color: var(--ink);
+  font-size: 13px;
+}
+.about-capabilities-note {
+  margin: 12px 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.capability-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.capability-chip {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: 11px ui-monospace, monospace;
+}
+.capability-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
 .theme-settings > p {
   margin: 0 0 12px;
   color: var(--muted);

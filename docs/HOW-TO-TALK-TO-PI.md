@@ -24,8 +24,8 @@ No command whitelist or semantic filter is applied. The backend only checks that
 ### 1. Snapshot — selection and event reconciliation
 
 The frontend calls `getSnapshot(sessionId)` when a session is selected and when Pi events require
-history reconciliation. Each request triggers five Pi commands in parallel inside
-`server/backend.ts`:
+history reconciliation. The backend keeps a per-session snapshot cache in
+`server/snapshot-cache.ts`. The first request for a session issues five Pi commands in parallel:
 
 | Command | Returns |
 |---|---|
@@ -35,10 +35,15 @@ history reconciliation. Each request triggers five Pi commands in parallel insid
 | `get_commands` | Available extensions, prompt templates, and skills |
 | `get_session_stats` | Token usage, total cost, context window pressure |
 
-The backend follows the active entry branch, keeps user, assistant, tool-result, and explicitly
-visible custom messages, and represents compactions as visible custom messages. It then assembles
-the result into a `SessionSnapshot` and sends it to the frontend as JSON. These five commands are
-the only ones called as part of snapshot refreshes; you never need to invoke them yourself.
+Warm-cache requests issue exactly one Pi command: `get_entries` with a `since` cursor built from
+the last entry id seen. The backend follows the active entry branch, keeps user, assistant,
+tool-result, and explicitly visible custom messages, and represents compactions as visible custom
+messages. When the branch leaf moves or `since` no longer matches any entry (documented as
+`success: false`), the entry list is refetched fully and the cursor is rebuilt — both are normal
+paths, not errors. The response is a `SessionSnapshot` including `state`, `messages`, `models`,
+`commands`, `promptTemplates`, `stats`, `liveEvents`, and `capabilities` (the Pi version plus the
+session's command names, used to gate UI). `message_end` and `agent_settled` Pi events refresh
+state and stats in the background; `session_exited`/`session_reassigned` clear the cache.
 
 ### 2. Arbitrary commands — on demand
 

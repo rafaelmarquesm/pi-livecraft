@@ -9,11 +9,13 @@ SettingsPanel (modal container, tab state)
   ├── Tab bar (role="tablist")
   │     ├── Tab button: Color themes
   │     ├── Tab button: Terminal
-  │     └── Tab button: Shortcuts
+  │     ├── Tab button: Shortcuts
+  │     └── Tab button: Pi session
   └── Tab panels (role="tabpanel", one visible at a time)
         ├── ThemeSettings (section component)
         ├── TerminalSettings (section component)
-        └── ShortcutsSettings (section component)
+        ├── ShortcutsSettings (section component)
+        └── SessionSettings (section components: session toggles + About)
 ```
 
 `App.tsx` owns all persisted values and passes them into `SettingsPanel` through props. Section components receive only the values and callbacks they need; transient state (theme name being edited, shortcut being captured) lives in `SettingsPanel`.
@@ -25,6 +27,7 @@ SettingsPanel (modal container, tab state)
 | `themes` | Color themes | `ThemeSettings` | `themes`, `activeThemeId`, `onSelectTheme`, `onDuplicateTheme`, `onRenameTheme`, `onUpdateThemeColor`, `onDeleteTheme`, `onResetTheme` |
 | `terminal` | Terminal | `TerminalSettings` | `terminalCommand`, `onTerminalCommandChange` |
 | `shortcuts` | Shortcuts | `ShortcutsSettings` | `definitions`, `shortcuts`, `onChange`, `onReset` |
+| `session` | Pi session | `SessionBehaviorSettings`, `AboutSettings` | `sessionSelected`, `autoCompactionEnabled`, `autoRetryEnabled`, `capabilities`, `onSetAutoCompaction`, `onSetAutoRetry` |
 
 ## Add a new tab
 

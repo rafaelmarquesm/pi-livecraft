@@ -8,8 +8,8 @@ import {
 } from '../src/features/conversation/conversation-scroll.ts'
 
 test('conversationHistoryStart adds complete user turns in batches', () => {
-  const messages = Array.from({ length: 180 }, () => ({ role: 'assistant' }))
-  for (const index of [0, 30, 60, 90, 120, 150]) messages[index] = { role: 'user' }
+  const messages = Array.from({ length: 180 }, () => ({ message: { role: 'assistant' } }))
+  for (const index of [0, 30, 60, 90, 120, 150]) messages[index] = { message: { role: 'user' } }
 
   assert.equal(conversationHistoryStart(messages, messages.length), 120)
   assert.equal(conversationHistoryStart(messages, 120), 60)
@@ -17,9 +17,9 @@ test('conversationHistoryStart adds complete user turns in batches', () => {
 })
 
 test('conversationHistoryStart bounds a long turn and history without users', () => {
-  const longTurn = Array.from({ length: 120 }, () => ({ role: 'assistant' }))
-  longTurn[10] = { role: 'user' }
-  const withoutUser = Array.from({ length: 120 }, () => ({ role: 'assistant' }))
+  const longTurn = Array.from({ length: 120 }, () => ({ message: { role: 'assistant' } }))
+  longTurn[10] = { message: { role: 'user' } }
+  const withoutUser = Array.from({ length: 120 }, () => ({ message: { role: 'assistant' } }))
 
   assert.equal(conversationHistoryStart(longTurn, longTurn.length), 70)
   assert.equal(conversationHistoryStart(longTurn, 70), 10)

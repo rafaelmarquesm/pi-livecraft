@@ -1,5 +1,5 @@
 import { isObject } from '../../../shared/is-object.ts'
-import type { JsonObject } from '../../../shared/types.ts'
+import type { JsonObject, SessionMessage } from '../../../shared/types.ts'
 import { toolCallsInMessage, type ToolCall } from './tool-protocol.ts'
 
 export type AssistantTurnPart = { kind: 'message'; message: JsonObject } | {
@@ -79,7 +79,7 @@ export function sameMessage(left: JsonObject, right: JsonObject): boolean {
 
 /** Merges history and streamed messages while retaining each streamed message's React identity. */
 export function conversationMessageEntries(
-  historyMessages: JsonObject[],
+  historyMessages: SessionMessage[],
   liveMessages: LiveMessage[],
 ): ConversationMessageEntry[] {
   const liveByKey = new Map<string, LiveMessage[]>()
@@ -91,7 +91,8 @@ export function conversationMessageEntries(
     else liveByKey.set(key, [live])
   }
   const matchedLiveIds = new Set<string>()
-  const historyEntries = historyMessages.map((message, historyIndex): ConversationMessageEntry => {
+  const historyEntries = historyMessages.map((entry, historyIndex): ConversationMessageEntry => {
+    const message = entry.message
     const key = messageMatchKey(message)
     const candidates = key === null ? undefined : liveByKey.get(key)
     const candidateIndex = candidates
@@ -102,7 +103,8 @@ export function conversationMessageEntries(
       candidates?.splice(candidateIndex, 1)
     }
     return {
-      key: live?.id ?? `history-${String(message.timestamp ?? '')}-${historyIndex}`,
+      key: live?.id ?? entry.entryId
+        ?? `history-${String(message.timestamp ?? '')}-${historyIndex}`,
       message,
       source: 'history',
       historyIndex,

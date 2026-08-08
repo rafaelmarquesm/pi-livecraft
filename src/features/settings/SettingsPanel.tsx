@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useState } from 'react'
 import * as Select from '@radix-ui/react-select'
+import type { PiCapabilities } from '../../../shared/types.ts'
 import type { CommandDefinition, CommandId } from '../commands/command-registry.ts'
 import { shortcutFromEvent, shortcutConflicts } from '../commands/command-registry.ts'
 import {
@@ -10,6 +11,7 @@ import {
   type Theme,
   type ThemeVariable,
 } from './themes.ts'
+import { capabilityEntries } from './capabilities.ts'
 
 const themeVariableLabels: Record<ThemeVariable, string> = {
   canvas: 'Background',
@@ -25,7 +27,7 @@ const themeVariableLabels: Record<ThemeVariable, string> = {
 // ── Tab registry ───────────────────────────────────────────────────
 
 /** Identifies a settings tab. Extend this union when adding a new tab. */
-export type SettingsTabId = 'themes' | 'terminal' | 'shortcuts'
+export type SettingsTabId = 'themes' | 'terminal' | 'shortcuts' | 'session'
 
 /** Describes one tab in the settings modal. */
 export interface SettingsTabDefinition {
@@ -38,6 +40,7 @@ export const settingsTabs: SettingsTabDefinition[] = [
   { id: 'themes', label: 'Color themes' },
   { id: 'terminal', label: 'Terminal' },
   { id: 'shortcuts', label: 'Shortcuts' },
+  { id: 'session', label: 'Pi session' },
 ]
 
 // ── Shared props ───────────────────────────────────────────────────
@@ -58,6 +61,15 @@ interface SettingsPanelProps {
   onResetTheme: (id: string) => void
   onReset: () => void
   onClose: () => void
+  /** True when a session is selected; session toggles are hidden otherwise. */
+  sessionSelected: boolean
+  /** Reconciled from the selected session's get_state snapshot. */
+  autoCompactionEnabled: boolean | null
+  /** Optimistic write-only auto-retry preference for the selected session (E10). */
+  autoRetryEnabled: boolean
+  capabilities: PiCapabilities | null
+  onSetAutoCompaction: (enabled: boolean) => void
+  onSetAutoRetry: (enabled: boolean) => void
 }
 
 // ── Section components ─────────────────────────────────────────────
@@ -317,6 +329,95 @@ function ShortcutsSettings(
   )
 }
 
+interface SessionBehaviorSettingsProps {
+  sessionSelected: boolean
+  autoCompactionEnabled: boolean | null
+  autoRetryEnabled: boolean
+  onSetAutoCompaction: (enabled: boolean) => void
+  onSetAutoRetry: (enabled: boolean) => void
+}
+
+/** Per-session Pi behavior toggles; only rendered when a session is selected. */
+function SessionBehaviorSettings(
+  {
+    sessionSelected,
+    autoCompactionEnabled,
+    autoRetryEnabled,
+    onSetAutoCompaction,
+    onSetAutoRetry,
+  }: SessionBehaviorSettingsProps,
+) {
+  if (!sessionSelected) {
+    return (
+      <section>
+        <h3>Pi session behavior</h3>
+        <p>Select a session to configure its compaction and retry behavior.</p>
+      </section>
+    )
+  }
+  return (
+    <section>
+      <h3>Pi session behavior</h3>
+      <label className='settings-toggle-row'>
+        <span>
+          Auto-compaction
+          <small>Compact automatically when the context window is nearly full.</small>
+        </span>
+        <input
+          aria-label='Auto-compaction'
+          checked={autoCompactionEnabled === true}
+          disabled={autoCompactionEnabled === null}
+          onChange={(event) => onSetAutoCompaction(event.target.checked)}
+          role='switch'
+          type='checkbox'
+        />
+      </label>
+      <label className='settings-toggle-row'>
+        <span>
+          Auto-retry
+          <small>Retry automatically after transient errors; applies to new retries.</small>
+        </span>
+        <input
+          aria-label='Auto-retry'
+          checked={autoRetryEnabled}
+          onChange={(event) => onSetAutoRetry(event.target.checked)}
+          role='switch'
+          type='checkbox'
+        />
+      </label>
+    </section>
+  )
+}
+
+interface AboutSettingsProps {
+  capabilities: PiCapabilities | null
+}
+
+/** Pi version and capabilities, derived from the connected session (M5), not hand-written. */
+function AboutSettings({ capabilities }: AboutSettingsProps) {
+  const version = capabilities?.version ?? '—'
+  const commands = capabilityEntries(capabilities)
+    .filter(([, available]) => available)
+    .map(([name]) => name)
+  return (
+    <section>
+      <h3>About</h3>
+      <div className='about-version'>
+        <span>Pi version</span>
+        <b>{version}</b>
+      </div>
+      <p className='about-capabilities-note'>Available commands in this session:</p>
+      {commands.length > 0
+        ? (
+          <div className='capability-chips'>
+            {commands.map((name) => <span className='capability-chip' key={name}>{name}</span>)}
+          </div>
+        )
+        : <p className='capability-empty'>—</p>}
+    </section>
+  )
+}
+
 // ── Main panel ─────────────────────────────────────────────────────
 
 /** Configures local shortcuts, terminal behavior, and editable color themes. */
@@ -336,6 +437,12 @@ export function SettingsPanel({
   onResetTheme,
   onReset,
   onClose,
+  sessionSelected,
+  autoCompactionEnabled,
+  autoRetryEnabled,
+  capabilities,
+  onSetAutoCompaction,
+  onSetAutoRetry,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<SettingsTabId>('themes')
   const [capturing, setCapturing] = useState<CommandId | null>(null)
@@ -428,6 +535,22 @@ export function SettingsPanel({
                 onCaptureStart={setCapturing}
                 shortcuts={shortcuts}
               />
+            </TabPanel>
+          )}
+          {activeTab === 'session' && (
+            <TabPanel
+              key='session'
+              id='settings-tab-session'
+              labelledBy='settings-tab-btn-session'
+            >
+              <SessionBehaviorSettings
+                autoCompactionEnabled={autoCompactionEnabled}
+                autoRetryEnabled={autoRetryEnabled}
+                onSetAutoCompaction={onSetAutoCompaction}
+                onSetAutoRetry={onSetAutoRetry}
+                sessionSelected={sessionSelected}
+              />
+              <AboutSettings capabilities={capabilities} />
             </TabPanel>
           )}
         </section>

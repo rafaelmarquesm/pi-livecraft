@@ -9,7 +9,7 @@ import {
   type KeyboardEvent,
   type WheelEvent,
 } from 'react'
-import type { JsonObject } from '../../../shared/types.ts'
+import type { SessionMessage } from '../../../shared/types.ts'
 import type { Activity } from './activity.ts'
 import { turnUsageByMessage } from './message-usage.ts'
 import {
@@ -48,7 +48,7 @@ export function Conversation(
   }: {
     activity: Activity | null
     agentName?: string
-    messages: JsonObject[]
+    messages: SessionMessage[]
     liveMessages: LiveMessage[]
     conversationView: 'simple' | 'semi-detailed' | 'detailed'
     navigationRequest?: { id: number; target: SessionAnalysisTarget }
@@ -65,10 +65,10 @@ export function Conversation(
   const allMessages = messages
   const { visibleMessages, toolCallIds, resultsByCallId } = useMemo(
     () => {
-      const visible = allMessages.filter(isVisibleConversationMessage)
-      const calls = allMessages.flatMap(toolCallsInMessage)
-      const results = new Map(allMessages.flatMap((message) => {
-        const result = toolResultInMessage(message)
+      const visible = allMessages.filter((entry) => isVisibleConversationMessage(entry.message))
+      const calls = allMessages.flatMap((entry) => toolCallsInMessage(entry.message))
+      const results = new Map(allMessages.flatMap((entry) => {
+        const result = toolResultInMessage(entry.message)
         return result ? [[result.toolCallId, result] as const] : []
       }))
       return {

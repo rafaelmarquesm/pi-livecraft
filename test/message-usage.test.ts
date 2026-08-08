@@ -29,22 +29,26 @@ test('extracts per-response cost and token counters from Pi usage', () => {
 
 test('keeps usage separate for each agentic turn', () => {
   const usages = turnUsageByMessage([
-    { role: 'user', content: 'Inspecte le dépôt.' },
+    { message: { role: 'user', content: 'Inspecte le dépôt.' } },
     {
-      role: 'assistant',
-      content: [
-        { type: 'thinking', thinking: 'Je cherche les fichiers.' },
-        { type: 'toolCall', id: 'call_1', name: 'read' },
-        { type: 'toolCall', id: 'call_2', name: 'grep' },
-      ],
-      usage: { input: 100, output: 10, cacheRead: 1_000, cost: { total: 0.001 } },
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'thinking', thinking: 'Je cherche les fichiers.' },
+          { type: 'toolCall', id: 'call_1', name: 'read' },
+          { type: 'toolCall', id: 'call_2', name: 'grep' },
+        ],
+        usage: { input: 100, output: 10, cacheRead: 1_000, cost: { total: 0.001 } },
+      },
     },
-    { role: 'toolResult', toolCallId: 'call_1' },
-    { role: 'toolResult', toolCallId: 'call_2' },
+    { message: { role: 'toolResult', toolCallId: 'call_1' } },
+    { message: { role: 'toolResult', toolCallId: 'call_2' } },
     {
-      role: 'assistant',
-      content: [{ type: 'text', text: 'C’est fait.' }],
-      usage: { input: 200, output: 20, cacheRead: 2_000, cost: { total: 0.002 } },
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'C’est fait.' }],
+        usage: { input: 200, output: 20, cacheRead: 2_000, cost: { total: 0.002 } },
+      },
     },
   ])
 
@@ -58,8 +62,8 @@ test('hides metrics when Pi does not provide complete usage', () => {
   assert.equal(messageUsage({ role: 'assistant', usage: { input: 10 } }), null)
   assert.deepEqual(
     turnUsageByMessage([
-      { role: 'user' },
-      { role: 'assistant', usage: { input: 10 } },
+      { message: { role: 'user' } },
+      { message: { role: 'assistant', usage: { input: 10 } } },
     ]),
     new Map(),
   )
@@ -67,17 +71,19 @@ test('hides metrics when Pi does not provide complete usage', () => {
 
 test('defers usage for messages whose tool calls are not yet resolved', () => {
   const messages = [
-    { role: 'user', content: 'Lis et cherche.' },
+    { message: { role: 'user', content: 'Lis et cherche.' } },
     {
-      role: 'assistant',
-      content: [
-        { type: 'toolCall', id: 'call_1', name: 'read' },
-        { type: 'toolCall', id: 'call_2', name: 'grep' },
-      ],
-      usage: { input: 100, output: 10, cacheRead: 50, cost: { total: 0.001 } },
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'toolCall', id: 'call_1', name: 'read' },
+          { type: 'toolCall', id: 'call_2', name: 'grep' },
+        ],
+        usage: { input: 100, output: 10, cacheRead: 50, cost: { total: 0.001 } },
+      },
     },
-    { role: 'toolResult', toolCallId: 'call_1' },
-    { role: 'toolResult', toolCallId: 'call_2' },
+    { message: { role: 'toolResult', toolCallId: 'call_1' } },
+    { message: { role: 'toolResult', toolCallId: 'call_2' } },
   ]
 
   // Neither call resolved (live): no usage.
@@ -99,11 +105,13 @@ test('defers usage for messages whose tool calls are not yet resolved', () => {
 
 test('shows usage immediately for assistant responses without tool calls', () => {
   const messages = [
-    { role: 'user', content: 'Bonjour' },
+    { message: { role: 'user', content: 'Bonjour' } },
     {
-      role: 'assistant',
-      content: [{ type: 'text', text: 'Salut !' }],
-      usage: { input: 10, output: 5, cacheRead: 0, cost: { total: 0.0001 } },
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Salut !' }],
+        usage: { input: 10, output: 5, cacheRead: 0, cost: { total: 0.0001 } },
+      },
     },
   ]
 
@@ -116,9 +124,11 @@ test('shows usage immediately for assistant responses without tool calls', () =>
 test('returns all usages when resolvedCallIds is not provided', () => {
   const messages = [
     {
-      role: 'assistant',
-      content: [{ type: 'toolCall', id: 'pending', name: 'read' }],
-      usage: { input: 100, output: 10, cacheRead: 1, cost: { total: 0.001 } },
+      message: {
+        role: 'assistant',
+        content: [{ type: 'toolCall', id: 'pending', name: 'read' }],
+        usage: { input: 100, output: 10, cacheRead: 1, cost: { total: 0.001 } },
+      },
     },
   ]
 

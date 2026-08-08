@@ -15,16 +15,18 @@ type ErrorTarget = 'push' | 'commit' | 'discard' | 'refresh'
 
 /** Owns Git-specific selection, actions, and diff rendering inside the sidebar. */
 export function GitWidget(
-  { snapshot, onCommit, onDiscard, onFileSelect, onPush, onRefresh, onReset, onRevert }: {
-    snapshot: GitSnapshot
-    onCommit: (message: string) => Promise<void>
-    onDiscard: (path?: string) => Promise<void>
-    onFileSelect: (path: string, commitHash?: string) => Promise<GitFileDiff>
-    onPush: () => Promise<GitPushResult>
-    onRefresh: () => Promise<void>
-    onReset: (hash: string) => Promise<GitResetResult>
-    onRevert: (hash: string) => Promise<GitRevertResult>
-  },
+  { snapshot, onCommit, onConfirm, onDiscard, onFileSelect, onPush, onRefresh, onReset, onRevert }:
+    {
+      snapshot: GitSnapshot
+      onCommit: (message: string) => Promise<void>
+      onConfirm: (message: string) => Promise<boolean>
+      onDiscard: (path?: string) => Promise<void>
+      onFileSelect: (path: string, commitHash?: string) => Promise<GitFileDiff>
+      onPush: () => Promise<GitPushResult>
+      onRefresh: () => Promise<void>
+      onReset: (hash: string) => Promise<GitResetResult>
+      onRevert: (hash: string) => Promise<GitRevertResult>
+    },
 ) {
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -105,8 +107,11 @@ export function GitWidget(
   /** Discards one file or all uncommitted changes after confirmation, then refreshes. */
   async function discard(path?: string): Promise<void> {
     const target = path ? `changes to ${path}` : 'all uncommitted changes'
-    if (!window.confirm(`Discard ${target}? This will delete new files and revert modifications.`))
-      return
+    if (
+      !await onConfirm(
+        `Discard ${target}? This will delete new files and revert modifications.`,
+      )
+    ) return
     setBusy(true)
     clearError()
     try {
@@ -122,7 +127,7 @@ export function GitWidget(
   /** Resets the latest commit after confirming that its changes stay local, fading its row before refresh. */
   async function resetCommit(hash: string): Promise<void> {
     if (
-      !window.confirm(
+      !await onConfirm(
         `Reset latest commit ${hash.slice(0, 7)}? Its changes will be kept in the working tree.`,
       )
     ) return
@@ -143,7 +148,7 @@ export function GitWidget(
 
   /** Reverts the chosen commit after confirmation, then refreshes so the new revert commit appears. */
   async function revertCommit(hash: string): Promise<void> {
-    if (!window.confirm(`Revert commit ${hash.slice(0, 7)}?`)) return
+    if (!await onConfirm(`Revert commit ${hash.slice(0, 7)}?`)) return
     setBusy(true)
     clearError()
     try {

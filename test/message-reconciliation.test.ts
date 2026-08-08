@@ -50,7 +50,10 @@ test('reconciles completed messages without collapsing distinct live turns', () 
 
   assert.equal(sameAssistantMessage(completed, different), false)
   assert.deepEqual(
-    conversationMessageEntries([completed], live).map(({ key, source }) => ({ key, source })),
+    conversationMessageEntries([{ message: completed }], live).map(({ key, source }) => ({
+      key,
+      source,
+    })),
     [
       { key: 'completed-1', source: 'history' },
       { key: 'different', source: 'live' },
@@ -64,7 +67,7 @@ test('indexes repeated message content without reusing a streamed identity', () 
   const live = [{ id: 'live-1', message }, { id: 'live-2', message }]
 
   assert.deepEqual(
-    conversationMessageEntries([message, message], live).map(({ key, source }) => ({
+    conversationMessageEntries([{ message }, { message }], live).map(({ key, source }) => ({
       key,
       source,
     })),
@@ -81,14 +84,19 @@ test('preserves streamed identities when messages move into history', () => {
   const live = [{ id: 'live-1', message: first }, { id: 'live-2', message: second }]
 
   assert.deepEqual(
-    conversationMessageEntries([first], live).map(({ key, source }) => ({ key, source })),
+    conversationMessageEntries([{ message: first }], live).map(({ key, source }) => ({
+      key,
+      source,
+    })),
     [
       { key: 'live-1', source: 'history' },
       { key: 'live-2', source: 'live' },
     ],
   )
   assert.deepEqual(
-    conversationMessageEntries([first, second], live).map(({ key, source }) => ({ key, source })),
+    conversationMessageEntries([{ message: first }, { message: second }], live).map((
+      { key, source },
+    ) => ({ key, source })),
     [
       { key: 'live-1', source: 'history' },
       { key: 'live-2', source: 'history' },
@@ -131,8 +139,8 @@ test('matches user messages when Pi returns content as an array', () => {
 
 test('reconciles an optimistic user message with its history counterpart', () => {
   const history = [
-    { role: 'user', timestamp: 100, content: 'Bonjour' },
-    { role: 'assistant', timestamp: 101, content: 'Réponse' },
+    { message: { role: 'user', timestamp: 100, content: 'Bonjour' } },
+    { message: { role: 'assistant', timestamp: 101, content: 'Réponse' } },
   ]
   const live = [{ id: 'opt-1', message: { role: 'user', content: 'Bonjour' } }]
   const entries = conversationMessageEntries(history, live)
@@ -143,11 +151,48 @@ test('reconciles an optimistic user message with its history counterpart', () =>
 })
 
 test('keeps an unmatched optimistic user message as a live entry', () => {
-  const history = [{ role: 'assistant', content: 'Précédent' }]
+  const history = [{ message: { role: 'assistant', content: 'Précédent' } }]
   const live = [{ id: 'opt-1', message: { role: 'user', content: 'En attente' } }]
   const entries = conversationMessageEntries(history, live)
   assert.deepEqual(entries.map(({ key, source }) => ({ key, source })), [
     { key: 'history--0', source: 'history' },
     { key: 'opt-1', source: 'live' },
   ])
+})
+
+test('uses the stable entry id as the history key when present', () => {
+  const history = [{ entryId: 'a1b2c3d4', message: { role: 'assistant', content: 'stable' } }]
+
+  assert.deepEqual(
+    conversationMessageEntries(history, []).map(({ key, source }) => ({ key, source })),
+    [{ key: 'a1b2c3d4', source: 'history' }],
+  )
+})
+
+test('keeps timestamp-index fallback keys for messages without an entry id', () => {
+  const history = [
+    { message: { role: 'assistant', timestamp: 1, content: 'premier' } },
+    { message: { role: 'assistant', timestamp: 2, content: 'second' } },
+  ]
+
+  assert.deepEqual(
+    conversationMessageEntries(history, []).map(({ key, source }) => ({ key, source })),
+    [
+      { key: 'history-1-0', source: 'history' },
+      { key: 'history-2-1', source: 'history' },
+    ],
+  )
+})
+
+test('reconciles an entry-id history message with a live message by content', () => {
+  const message = { role: 'assistant', timestamp: 10, content: [{ type: 'text', text: 'done' }] }
+  const live = [{ id: 'live-9', message }]
+
+  assert.deepEqual(
+    conversationMessageEntries([{ entryId: 'a1b2c3d4', message }], live).map(({ key, source }) => ({
+      key,
+      source,
+    })),
+    [{ key: 'live-9', source: 'history' }],
+  )
 })

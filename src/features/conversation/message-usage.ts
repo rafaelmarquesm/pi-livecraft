@@ -1,4 +1,4 @@
-import type { JsonObject } from '../../../shared/types.ts'
+import type { JsonObject, SessionMessage } from '../../../shared/types.ts'
 import { isObject } from '../../../shared/is-object.ts'
 import { toolCallsInMessage } from './tool-protocol.ts'
 
@@ -44,10 +44,11 @@ export function formatTokens(value: number): string {
  * When resolvedCallIds is provided, only returns usage for messages whose tool calls
  * have all been resolved (result received). */
 export function turnUsageByMessage(
-  messages: JsonObject[],
+  messages: readonly SessionMessage[],
   resolvedCallIds?: ReadonlySet<string>,
 ): Map<number, MessageUsage> {
-  return new Map(messages.flatMap((message, index) => {
+  return new Map(messages.flatMap((entry, index) => {
+    const message = entry.message
     const usage = message.role === 'assistant' ? messageUsage(message) : null
     if (!usage) return []
     if (resolvedCallIds !== undefined) {

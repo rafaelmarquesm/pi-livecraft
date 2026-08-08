@@ -123,6 +123,21 @@ const documentationCases: DocumentationCase[] = [
       'server/features/README.md',
     ],
   },
+  {
+    name: 'extension ui',
+    prompt:
+      'Sans modifier le dépôt, prépare un plan précis pour afficher dans l\'interface les widgets et la barre de statut envoyés par les extensions Pi (setWidget/setStatus/set_editor_text).',
+    expectedDocuments: [
+      'docs/README.md',
+      'docs/HOW-TO-EXTENSION-UI.md',
+      'src/features/extension-ui/README.md',
+    ],
+    expectedEvidence: [
+      { label: 'extension UI owner', paths: ['src/features/extension-ui/ExtensionWidgetHost.tsx'] },
+      { label: 'shared reducer', paths: ['shared/extension-ui.ts'] },
+    ],
+    allowedDocuments: ['.pi/skills/livecraft-ui/SKILL.md'],
+  },
 ]
 
 /** Measures whether successful reads covered the expected documentation in order and began with the index. */

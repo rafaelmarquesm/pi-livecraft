@@ -10,12 +10,14 @@ import {
   type FormEvent,
 } from 'react'
 import { Tooltip } from '../../components/Tooltip.tsx'
+import type { ExtensionEditorText } from '../../../shared/extension-ui.ts'
 import type {
   JsonObject,
   PromptTemplate,
   SessionSnapshot,
   SessionSummary,
 } from '../../../shared/types.ts'
+import { applyEditorPrefill } from '../extension-ui/editor-prefill.ts'
 import { maxComposerImages, prepareComposerImage, type ComposerImage } from './composer-images.ts'
 import {
   ensureCompactCommand,
@@ -25,6 +27,7 @@ import {
   isObject,
   readComposerDraft,
 } from './composer-utils.ts'
+import { contextGaugeState } from './context-gauge.ts'
 import { AgentSelect } from './selects/AgentSelect.tsx'
 import { BehaviorSelect } from './selects/BehaviorSelect.tsx'
 import { ModelSelect } from './selects/ModelSelect.tsx'
@@ -56,8 +59,10 @@ export const Composer = memo(function Composer({
   commands,
   running,
   compacting,
+  retrying,
   onSend,
   onAbort,
+  onAbortRetry,
   onImprovePrompt,
   onSavePrompt,
   onError,
@@ -67,6 +72,8 @@ export const Composer = memo(function Composer({
   focusRequest,
   draftRequest,
   onDraftApplied,
+  editorText,
+  onEditorTextRejected,
 }: {
   session: SessionSummary
   snapshot: SessionSnapshot
@@ -82,6 +89,8 @@ export const Composer = memo(function Composer({
   commands: JsonObject[]
   running: boolean
   compacting: boolean
+  /** True while Pi retries a transient error (provider auto-retry or summarization retry). */
+  retrying: boolean
   onSend: (
     message: string,
     images: JsonObject[],
@@ -89,6 +98,8 @@ export const Composer = memo(function Composer({
     isCommand: boolean,
   ) => Promise<void>
   onAbort: () => Promise<JsonObject>
+  /** Cancels an in-progress retry loop (abort_retry). */
+  onAbortRetry: () => Promise<JsonObject>
   onImprovePrompt: (
     prompt: string,
     direction?: string,
@@ -105,6 +116,10 @@ export const Composer = memo(function Composer({
   focusRequest?: number
   draftRequest?: { id: string; message: string }
   onDraftApplied?: (id: string) => void
+  /** Pending extension editor prefill (set_editor_text); applied or rejected per E15 policy. */
+  editorText?: ExtensionEditorText | null
+  /** Called when the prefill cannot be applied because a draft exists. */
+  onEditorTextRejected?: (text: string) => void
 }) {
   const draftStorageKey = `pi-livecraft.composer-draft.${session.id}`
   const [message, setMessage] = useState(() => readComposerDraft(draftStorageKey))
@@ -152,6 +167,8 @@ export const Composer = memo(function Composer({
   // Keep a ref to the latest draft so stable callbacks can read it without re-creating on every keystroke.
   const messageRef = useRef(message)
   messageRef.current = message
+  // Last handled set_editor_text nonce so StrictMode double-effects cannot re-ask.
+  const lastEditorTextNonceRef = useRef<number | undefined>(undefined)
   /** Snapshot commands augmented with the local compact command when Pi doesn't expose it. */
   const allCommands = ensureCompactCommand(commands)
   const commandPending = isCommandDraft(message, allCommands)
@@ -280,6 +297,18 @@ export const Composer = memo(function Composer({
       draftPersistTimerRef.current = 0
     }, 400)
   }, [persistDraft])
+
+  // Extension editor prefill (E15): never overwrite a draft. Apply when the
+  // composer is empty, otherwise hand the text to the host for confirmation.
+  useEffect(() => {
+    if (!editorText || editorText.nonce === lastEditorTextNonceRef.current) return
+    lastEditorTextNonceRef.current = editorText.nonce
+    if (applyEditorPrefill(messageRef.current, editorText.text) === 'apply') {
+      setDraftMessage(editorText.text)
+    } else {
+      onEditorTextRejected?.(editorText.text)
+    }
+  }, [editorText, onEditorTextRejected, setDraftMessage])
 
   /** Inserts the selected slash command into the textarea and closes the popover. */
   const selectSlashCommand = useCallback((name: string): void => {
@@ -429,24 +458,16 @@ export const Composer = memo(function Composer({
 
   const stats = snapshot.stats
   const contextUsage = stats?.contextUsage
-  const contextPercentValue = typeof contextUsage?.percent === 'number'
-    ? Math.round(contextUsage.percent)
-    : null
-  const contextPercent = contextPercentValue === null ? '—' : `${contextPercentValue}%`
+  const gauge = contextGaugeState(contextUsage)
+  const contextPercent = gauge.kind === 'value' ? `${gauge.percent}%` : '—'
+  const contextPercentValue = gauge.kind === 'value' ? gauge.percent : null
+  const contextUnknown = gauge.kind === 'unknown'
   const contextTokens = typeof contextUsage
           ?.tokens === 'number' && typeof contextUsage.contextWindow === 'number'
     ? `${formatTokens(contextUsage.tokens)}/${formatTokens(contextUsage.contextWindow)}`
     : 'Unavailable'
   const cost = typeof stats?.cost === 'number' ? `$${stats.cost.toFixed(2)}` : '—'
-  const contextClass = typeof contextUsage?.percent === 'number'
-    ? contextUsage.percent >= 40
-      ? 'context-danger'
-      : contextUsage.percent >= 30
-      ? 'context-warning-strong'
-      : contextUsage.percent >= 20
-      ? 'context-warning'
-      : ''
-    : ''
+  const contextClass = gauge.className
 
   return (
     <form
@@ -650,6 +671,16 @@ export const Composer = memo(function Composer({
             </Tooltip>
           </div>
           <div className='composer-primary-actions'>
+            {retrying && (
+              <button
+                aria-label='Cancel retries'
+                className='composer-cancel-retries'
+                onClick={() => void onAbortRetry().catch(onError)}
+                type='button'
+              >
+                Cancel retries
+              </button>
+            )}
             <span className='composer-stop-slot'>
               {running && (
                 <Tooltip label='Stop generation'>
@@ -698,6 +729,7 @@ export const Composer = memo(function Composer({
           contextTokens={contextTokens}
           contextPercent={contextPercent}
           contextPercentValue={contextPercentValue}
+          contextUnknown={contextUnknown}
         />
       </div>
       {promptSave && (

@@ -8,6 +8,7 @@ Pi Livecraft is documented in layers: begin with the system you want to build on
 - **Change the frontend:** [frontend feature map](/src/features/README.md).
 - **Add a tooltip or shared UI element:** [shared components](/src/components/README.md).
 - **Modify the composer:** [step-by-step guide](/docs/HOW-TO-COMPOSER.md), then [composer reference](/src/features/composer/README.md).
+- **Render extension UI around the composer:** [step-by-step guide](/docs/HOW-TO-EXTENSION-UI.md), then [extension UI host](/src/features/extension-ui/README.md).
 - **Add a command, palette entry, or shortcut:** [step-by-step guide](/docs/HOW-TO-PALETTE-COMMAND.md), then [contract reference](/src/features/commands/README.md).
 - **Add a preference, persisted UI state, or settings tab:** [how to settings](/docs/HOW-TO-SETTINGS.md), then [settings and preferences](/src/features/settings/README.md).
 - **Customise colours or add a theme:** [how to theme](/docs/HOW-TO-THEME.md).
@@ -27,6 +28,7 @@ Pi Livecraft is documented in layers: begin with the system you want to build on
 Step-by-step walkthroughs for common tasks. Each guide is self-contained: start here, follow the file references, no prior knowledge assumed.
 
 - **[Modify the composer](/docs/HOW-TO-COMPOSER.md)** — add a toolbar button, dropdown, or session stat.
+- **[Render extension UI](/docs/HOW-TO-EXTENSION-UI.md)** — status chips, widgets, titles, and draft prefills.
 - **[Add a widget](/docs/HOW-TO-WIDGET.md)** — sidebar widget, API endpoint, and backend capability.
 - **[Add a conversation action](/docs/HOW-TO-CONVERSATION-ACTION.md)** — contextual action on a message or tool call.
 - **[Add a tool call presentation](/docs/HOW-TO-TOOL-PRESENTATION.md)** — custom display for a Pi tool in the conversation.

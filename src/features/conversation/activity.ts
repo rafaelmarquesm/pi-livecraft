@@ -18,6 +18,10 @@ export interface Activity {
   thinking?: string
   attempt?: number
   maxAttempts?: number
+  /** True when the retry is a compaction summarization retry; compaction is still in progress. */
+  compactionRetry?: boolean
+  /** True when the retry is a summarization retry (compaction or branch summary), not a provider auto-retry. */
+  summarizationRetry?: boolean
 }
 
 /** Converts Pi events into a stable activity state for the conversation indicator. */
@@ -34,6 +38,35 @@ export function activityForPiEvent(current: Activity | null, event: JsonObject):
       attempt: typeof event.attempt === 'number' ? event.attempt : undefined,
       maxAttempts: typeof event.maxAttempts === 'number' ? event.maxAttempts : undefined,
     }
+  }
+  if (
+    event.type === 'summarization_retry_scheduled'
+    || event.type === 'summarization_retry_attempt_start'
+  ) {
+    return {
+      kind: 'retrying',
+      attempt: typeof event.attempt === 'number'
+        ? event.attempt
+        : current?.kind === 'retrying' && typeof current.attempt === 'number'
+        ? current.attempt
+        : undefined,
+      maxAttempts: typeof event.maxAttempts === 'number'
+        ? event.maxAttempts
+        : current?.kind === 'retrying' && typeof current.maxAttempts === 'number'
+        ? current.maxAttempts
+        : undefined,
+      summarizationRetry: true,
+      compactionRetry: event.source === 'compaction'
+        ? true
+        : event.source === 'branchSummary'
+        ? false
+        : current?.compactionRetry === true || current?.kind === 'compacting',
+    }
+  }
+  if (event.type === 'summarization_retry_finished') {
+    // A compaction summarization retry means the compaction itself is still in
+    // progress; branch-summary retries return to normal work.
+    return current?.compactionRetry === true ? { kind: 'compacting' } : { kind: 'working' }
   }
   if (event.type === 'tool_execution_start') return { kind: 'tool-waiting' }
   if (event.type === 'tool_execution_end') return { kind: 'working' }
@@ -84,6 +117,8 @@ export function activityActionText(activity: Activity): string {
     const progress = activity.attempt !== undefined && activity.maxAttempts !== undefined
       ? ` (${activity.attempt}/${activity.maxAttempts})`
       : ''
+    if (activity.compactionRetry) return `is retrying compaction${progress}…`
+    if (activity.summarizationRetry) return `is retrying a summary${progress}…`
     return `is reconnecting to the provider${progress}…`
   }
   if (activity.kind === 'compacting') return 'is compacting the session…'

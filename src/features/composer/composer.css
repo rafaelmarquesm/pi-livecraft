@@ -360,6 +360,9 @@
 .context-danger {
   color: var(--danger);
 }
+.context-unknown {
+  color: var(--muted);
+}
 .composer-actions {
   display: flex;
   align-items: center;
@@ -743,6 +746,32 @@
 }
 .icon-button.danger svg {
   width: 13px;
+}
+.composer-cancel-retries {
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  padding: 0 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 11px;
+  white-space: nowrap;
+  transition:
+    border-color 180ms ease-out,
+    background 180ms ease-out,
+    color 180ms ease-out;
+}
+.composer-cancel-retries:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.composer-cancel-retries:focus-visible {
+  outline: 0;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.composer-cancel-retries:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 .slash-commands {

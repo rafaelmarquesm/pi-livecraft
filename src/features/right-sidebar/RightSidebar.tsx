@@ -53,6 +53,7 @@ export function RightSidebar({
   workspacePath,
   railActions,
   onCommit,
+  onConfirm,
   onDiscard,
   onFileSelect,
   onPush,
@@ -81,6 +82,7 @@ export function RightSidebar({
   workspacePath: string
   railActions: RailAction[]
   onCommit: (message: string) => Promise<void>
+  onConfirm: (message: string) => Promise<boolean>
   onDiscard: (path?: string) => Promise<void>
   onFileSelect: (path: string, commitHash?: string) => Promise<GitFileDiff>
   onPush: () => Promise<GitPushResult>
@@ -204,6 +206,7 @@ export function RightSidebar({
             {activeWidget === 'git' && snapshot && (
               <GitWidget
                 onCommit={onCommit}
+                onConfirm={onConfirm}
                 onDiscard={onDiscard}
                 onFileSelect={onFileSelect}
                 onPush={onPush}

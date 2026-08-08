@@ -21,34 +21,42 @@ const usage = (
 
 test('reconstruit les requêtes multi-appels et calcule les statistiques par réponse assistant', () => {
   const messages = [
-    { role: 'user', timestamp: 100, content: 'Analyse le dépôt.' },
+    { message: { role: 'user', timestamp: 100, content: 'Analyse le dépôt.' } },
     {
-      role: 'assistant',
-      content: [{
-        type: 'toolCall',
-        id: 'call_1',
-        name: 'read',
-        arguments: { path: 'src/App.tsx' },
-      }],
-      usage: usage(100, 10, 1_000, 20, 0.01),
+      message: {
+        role: 'assistant',
+        content: [{
+          type: 'toolCall',
+          id: 'call_1',
+          name: 'read',
+          arguments: { path: 'src/App.tsx' },
+        }],
+        usage: usage(100, 10, 1_000, 20, 0.01),
+      },
     },
     {
-      role: 'toolResult',
-      toolCallId: 'call_1',
-      toolName: 'read',
-      content: [{ type: 'text', text: 'contenu' }],
-      isError: false,
+      message: {
+        role: 'toolResult',
+        toolCallId: 'call_1',
+        toolName: 'read',
+        content: [{ type: 'text', text: 'contenu' }],
+        isError: false,
+      },
     },
     {
-      role: 'assistant',
-      content: [{ type: 'text', text: 'Première réponse.' }],
-      usage: usage(200, 20, 2_000, 30, 0.02),
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Première réponse.' }],
+        usage: usage(200, 20, 2_000, 30, 0.02),
+      },
     },
-    { role: 'user', timestamp: 200, content: 'Continue.' },
+    { message: { role: 'user', timestamp: 200, content: 'Continue.' } },
     {
-      role: 'assistant',
-      content: [{ type: 'text', text: 'En cours.' }],
-      usage: usage(300, 30, 3_000, 40, 0.03),
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'En cours.' }],
+        usage: usage(300, 30, 3_000, 40, 0.03),
+      },
     },
   ]
   const analysis = analyzeSession(
@@ -120,28 +128,34 @@ test('reconstruit les requêtes multi-appels et calcule les statistiques par ré
 
 test('compte uniquement les erreurs explicites et déduplique la télémétrie live', () => {
   const messages = [
-    { role: 'user', timestamp: 100, content: 'Lance les outils.' },
+    { message: { role: 'user', timestamp: 100, content: 'Lance les outils.' } },
     {
-      role: 'assistant',
-      content: [
-        { type: 'toolCall', id: 'call_failed', name: 'bash', arguments: { command: 'false' } },
-        { type: 'toolCall', id: 'call_text', name: 'read', arguments: { path: 'missing' } },
-      ],
-      usage: usage(10, 5, 20, 0, 0.001),
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'toolCall', id: 'call_failed', name: 'bash', arguments: { command: 'false' } },
+          { type: 'toolCall', id: 'call_text', name: 'read', arguments: { path: 'missing' } },
+        ],
+        usage: usage(10, 5, 20, 0, 0.001),
+      },
     },
     {
-      role: 'toolResult',
-      toolCallId: 'call_failed',
-      toolName: 'bash',
-      content: [{ type: 'text', text: 'failed' }],
-      isError: true,
+      message: {
+        role: 'toolResult',
+        toolCallId: 'call_failed',
+        toolName: 'bash',
+        content: [{ type: 'text', text: 'failed' }],
+        isError: true,
+      },
     },
     {
-      role: 'toolResult',
-      toolCallId: 'call_text',
-      toolName: 'read',
-      content: [{ type: 'text', text: 'error in ordinary output' }],
-      isError: false,
+      message: {
+        role: 'toolResult',
+        toolCallId: 'call_text',
+        toolName: 'read',
+        content: [{ type: 'text', text: 'error in ordinary output' }],
+        isError: false,
+      },
     },
   ]
   const analysis = analyzeSession(messages, null, false, {
@@ -171,28 +185,34 @@ test('compte uniquement les erreurs explicites et déduplique la télémétrie l
 
 test('cumule les volumes et durées par type d’outil', () => {
   const messages = [
-    { role: 'user', content: 'Lis les fichiers.' },
+    { message: { role: 'user', content: 'Lis les fichiers.' } },
     {
-      role: 'assistant',
-      content: [
-        { type: 'toolCall', id: 'read_1', name: 'read', arguments: { path: 'a' } },
-        { type: 'toolCall', id: 'read_2', name: 'read', arguments: { path: 'b' } },
-      ],
-      usage: usage(10, 5, 20, 0, 0.001),
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'toolCall', id: 'read_1', name: 'read', arguments: { path: 'a' } },
+          { type: 'toolCall', id: 'read_2', name: 'read', arguments: { path: 'b' } },
+        ],
+        usage: usage(10, 5, 20, 0, 0.001),
+      },
     },
     {
-      role: 'toolResult',
-      toolCallId: 'read_1',
-      toolName: 'read',
-      content: [{ type: 'text', text: 'abc' }],
-      isError: false,
+      message: {
+        role: 'toolResult',
+        toolCallId: 'read_1',
+        toolName: 'read',
+        content: [{ type: 'text', text: 'abc' }],
+        isError: false,
+      },
     },
     {
-      role: 'toolResult',
-      toolCallId: 'read_2',
-      toolName: 'read',
-      content: [{ type: 'text', text: 'hello' }],
-      isError: true,
+      message: {
+        role: 'toolResult',
+        toolCallId: 'read_2',
+        toolName: 'read',
+        content: [{ type: 'text', text: 'hello' }],
+        isError: true,
+      },
     },
   ]
   const analysis = analyzeSession(messages, null, false, {
@@ -228,23 +248,29 @@ test('rattache une exécution live orpheline à une requête navigable de secour
 test('prépare un prompt borné sans transmettre les sorties des outils', () => {
   const analysis = analyzeSession(
     [
-      { role: 'user', content: 'Inspecte la session.' },
+      { message: { role: 'user', content: 'Inspecte la session.' } },
       {
-        role: 'assistant',
-        content: [{ type: 'toolCall', id: 'call_1', name: 'read', arguments: { path: 'a' } }],
-        usage: usage(100, 4, 900, 20, 0.02),
+        message: {
+          role: 'assistant',
+          content: [{ type: 'toolCall', id: 'call_1', name: 'read', arguments: { path: 'a' } }],
+          usage: usage(100, 4, 900, 20, 0.02),
+        },
       },
       {
-        role: 'toolResult',
-        toolCallId: 'call_1',
-        toolName: 'read',
-        content: [{ type: 'text', text: 'secret tool output' }],
-        isError: true,
+        message: {
+          role: 'toolResult',
+          toolCallId: 'call_1',
+          toolName: 'read',
+          content: [{ type: 'text', text: 'secret tool output' }],
+          isError: true,
+        },
       },
       {
-        role: 'assistant',
-        content: [{ type: 'text', text: 'Réponse finale.' }],
-        usage: usage(50, 2, 450, 10, 0.04),
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'Réponse finale.' }],
+          usage: usage(50, 2, 450, 10, 0.04),
+        },
       },
     ],
     null,

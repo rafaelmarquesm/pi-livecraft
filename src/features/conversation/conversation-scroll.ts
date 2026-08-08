@@ -3,7 +3,7 @@ const HISTORY_RENDER_BATCH_SIZE = 50
 
 /** Finds a bounded recent render boundary, preferring a nearby complete user turn. */
 export function conversationHistoryStart(
-  messages: readonly { role?: unknown }[],
+  messages: readonly { message: { role?: unknown } }[],
   beforeIndex: number,
 ): number {
   const end = Math.min(messages.length, Math.max(0, beforeIndex))
@@ -11,7 +11,7 @@ export function conversationHistoryStart(
   if (tentativeStart === 0) return 0
   const alignmentStart = Math.max(0, tentativeStart - HISTORY_RENDER_BATCH_SIZE)
   for (let index = tentativeStart; index >= alignmentStart; index -= 1) {
-    if (messages[index]?.role === 'user') return index
+    if (messages[index]?.message.role === 'user') return index
   }
   return tentativeStart
 }

@@ -5,20 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.0] - 2026-08-07
+## [1.2.0] - 2026-08-08
 
 ### Added
 
 - Copy assistant code blocks to the clipboard with a single click.
+- Host Pi extension UI: `setStatus` entries render as a status bar above the composer, `setWidget` blocks render above/below it with per-widget error isolation, `setTitle` updates the tab title with a fixed Livecraft prefix, and `set_editor_text` prefills the composer without ever silently replacing a non-empty draft.
+- Get native OS notifications when a background session finishes or fails after retries (only while the tab is hidden), with the tab title and favicon reflecting running work.
+- Cancel an in-progress retry (provider reconnection, compaction, or branch summary) with a "Cancel retries" button next to the composer's stop control.
+- Configure the selected session from Settings: toggle auto-compaction (reconciled from the session state) and auto-retry (applies to new retries).
+- See the connected Pi version and its available commands as chips in the Settings "Pi session" tab.
+- Show a clearer context gauge: "—" with an explanatory tooltip when context usage is unknown after compaction.
 
 ### Changed
 
 - Highlight tool call names with the app accent color for better readability.
+- Load conversation snapshots incrementally: after the first load, each refresh reads only the new session entries instead of the whole history, and static session data (models, commands, templates) is cached per session.
+- Every snapshot message now carries its stable session entry id, giving message identity across refreshes, search, and forks.
+- Hardened the local server against drive-by browser requests: state-changing routes require `application/json` and a loopback origin.
 
 ### Fixed
 
 - Assemble live assistant RPC deltas so streaming replies display as complete, coherent text.
 - Show assistant output before blocking questions, instead of hiding it behind the prompt.
+- Compaction and branch-summary retries now show "Retrying…" instead of a stuck "Compacting" state.
 
 ## [1.1.0] - 2026-08-05
 

@@ -5,6 +5,7 @@ import {
   LiveSessionEvents,
   visibleSessionMessages,
 } from '../server/session-snapshot.ts'
+import type { JsonObject, SessionMessage } from '../shared/types.ts'
 
 test('retains only the events needed to restore active thinking and tools', () => {
   const live = new LiveSessionEvents()
@@ -101,11 +102,62 @@ test('keeps the active conversation before and after compaction', () => {
   ], 'user-2')
 
   assert.deepEqual(messages, [
-    { role: 'user', content: 'Original request' },
-    { role: 'assistant', content: 'Original response' },
-    { role: 'custom', customType: 'compaction', content: 'Summary', display: true },
-    { role: 'user', content: 'Continue' },
+    {
+      entryId: 'user-1',
+      parentEntryId: undefined,
+      message: { role: 'user', content: 'Original request' },
+    },
+    {
+      entryId: 'assistant-1',
+      parentEntryId: 'user-1',
+      message: { role: 'assistant', content: 'Original response' },
+    },
+    {
+      message: { role: 'custom', customType: 'compaction', content: 'Summary', display: true },
+    },
+    {
+      entryId: 'user-2',
+      parentEntryId: 'compact-1',
+      message: { role: 'user', content: 'Continue' },
+    },
   ])
+})
+
+test('carries a stable entry id on every message backed by a real entry', () => {
+  const messages = activeSessionMessages([
+    { type: 'message', id: 'user-1', parentId: null, message: { role: 'user', content: 'Hi' } },
+    { type: 'compaction', id: 'compact-1', parentId: 'user-1', summary: 'Summary' },
+    {
+      type: 'custom_message',
+      id: 'custom-1',
+      parentId: 'compact-1',
+      customType: 'status',
+      content: 'Ready',
+      display: true,
+    },
+  ], 'custom-1')
+
+  assert.deepEqual(messages, [
+    { entryId: 'user-1', parentEntryId: undefined, message: { role: 'user', content: 'Hi' } },
+    {
+      message: { role: 'custom', customType: 'compaction', content: 'Summary', display: true },
+    },
+    {
+      entryId: 'custom-1',
+      parentEntryId: 'compact-1',
+      message: {
+        role: 'custom',
+        customType: 'status',
+        content: 'Ready',
+        display: true,
+      },
+    },
+  ])
+  for (const { entryId, message } of messages) {
+    if (message.role !== 'custom' || message.customType !== 'compaction') {
+      assert.equal(typeof entryId, 'string')
+    }
+  }
 })
 
 test('filters compaction entries without a string summary', () => {
@@ -121,8 +173,12 @@ test('filters compaction entries without a string summary', () => {
   ], 'user-2')
 
   assert.deepEqual(messages, [
-    { role: 'user', content: 'Hello' },
-    { role: 'user', content: 'World' },
+    { entryId: 'user-1', parentEntryId: undefined, message: { role: 'user', content: 'Hello' } },
+    {
+      entryId: 'user-2',
+      parentEntryId: 'compact-1',
+      message: { role: 'user', content: 'World' },
+    },
   ])
 })
 
@@ -134,18 +190,19 @@ test('keeps visible custom messages out of hidden extension context', () => {
     content: 'Interne',
     display: false,
   }
+  const wrap = (message: JsonObject): SessionMessage => ({ message })
 
   assert.deepEqual(
     visibleSessionMessages([
-      { role: 'user', content: 'Bonjour' },
-      visible,
-      hidden,
-      { role: 'custom', content: 'Type manquant', display: true },
-      { role: 'branchSummary', summary: 'Résumé' },
+      wrap({ role: 'user', content: 'Bonjour' }),
+      wrap(visible),
+      wrap(hidden),
+      wrap({ role: 'custom', content: 'Type manquant', display: true }),
+      wrap({ role: 'branchSummary', summary: 'Résumé' }),
     ]),
     [
-      { role: 'user', content: 'Bonjour' },
-      visible,
+      wrap({ role: 'user', content: 'Bonjour' }),
+      wrap(visible),
     ],
   )
 })

@@ -53,7 +53,6 @@ const text: string = await runPrompt(sessionId, options)
 | `systemPrompt` | `string` | `undefined` | System prompt for the disposable session |
 | `thinkingLevel` | `string` | `'off'` | `'off'`, `'low'`, `'medium'`, or `'high'` |
 | `model` | `{ provider, modelId }` | auto (cheapest) | Model to use; omit for cheapest available |
-| `extensions` | `string[]` | `undefined` | Extension paths to load; omit to disable all |
 | `tools` | `string[]` | `undefined` | Tool names to load; omit to disable all |
 | `includeContextFiles` | `boolean` | `true` | Whether Pi loads `AGENTS.md`/`CLAUDE.md` from parent directories. Set `false` to disable automatic context and provide your own via `systemPrompt`. |
 

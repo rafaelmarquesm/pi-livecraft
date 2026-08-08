@@ -5,7 +5,7 @@ import {
   assistantMessageInEvent,
 } from '../../../shared/assistant-message-stream.ts'
 import { isObject } from '../../../shared/is-object.ts'
-import type { JsonObject, SessionSnapshot } from '../../../shared/types.ts'
+import type { JsonObject, SessionMessage, SessionSnapshot } from '../../../shared/types.ts'
 import { activityForPiEvent, type Activity } from './activity.ts'
 import { advanceEventSequence } from './event-sequence.ts'
 import type { LiveMessage } from './message-reconciliation.ts'
@@ -27,6 +27,7 @@ const emptySnapshot: SessionSnapshot = {
   promptTemplates: [],
   stats: null,
   liveEvents: [],
+  capabilities: null,
 }
 
 const snapshotRefreshDelayMs = 100
@@ -369,9 +370,9 @@ export function useConversationRuntime(
 }
 
 /** Returns the timestamp of the most recent user message, if any. */
-function lastUserTimestamp(messages: JsonObject[]): number | undefined {
+function lastUserTimestamp(messages: SessionMessage[]): number | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]
+    const message = messages[index]?.message
     if (message?.role === 'user' && typeof message.timestamp === 'number') return message.timestamp
   }
   return undefined

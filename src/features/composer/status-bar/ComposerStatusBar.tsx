@@ -14,6 +14,7 @@ export const ComposerStatusBar = memo(function ComposerStatusBar(
     contextTokens,
     contextPercent,
     contextPercentValue,
+    contextUnknown,
   }: {
     session: SessionSummary
     running: boolean
@@ -23,6 +24,8 @@ export const ComposerStatusBar = memo(function ComposerStatusBar(
     contextTokens: string
     contextPercent: string
     contextPercentValue: number | null
+    /** True when context usage exists but the percent is null (post-compaction). */
+    contextUnknown: boolean
   },
 ) {
   return (
@@ -40,6 +43,7 @@ export const ComposerStatusBar = memo(function ComposerStatusBar(
         contextTokens={contextTokens}
         contextPercent={contextPercent}
         contextPercentValue={contextPercentValue}
+        contextUnknown={contextUnknown}
       />
     </div>
   )

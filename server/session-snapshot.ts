@@ -2,7 +2,7 @@ import {
   assistantMessageAfterEvent,
   assistantMessageInEvent,
 } from '../shared/assistant-message-stream.ts'
-import type { JsonObject } from '../shared/types.ts'
+import type { JsonObject, SessionMessage } from '../shared/types.ts'
 import { isObject } from '../shared/is-object.ts'
 
 export interface SequencedPiEvent {
@@ -75,7 +75,7 @@ export class LiveSessionEvents {
 }
 
 /** Rebuilds the active conversation without dropping messages hidden from Pi by compaction. */
-export function activeSessionMessages(entries: JsonObject[], leafId: unknown): JsonObject[] {
+export function activeSessionMessages(entries: JsonObject[], leafId: unknown): SessionMessage[] {
   if (typeof leafId !== 'string') return []
   const entriesById = new Map(
     entries.flatMap((entry) => typeof entry.id === 'string' ? [[entry.id, entry] as const] : []),
@@ -90,12 +90,12 @@ export function activeSessionMessages(entries: JsonObject[], leafId: unknown): J
     activeEntries.push(entry)
     id = typeof entry.parentId === 'string' ? entry.parentId : null
   }
-  return visibleSessionMessages(activeEntries.reverse().flatMap(messageFromEntry))
+  return visibleSessionMessages(activeEntries.reverse().flatMap(entryMessages))
 }
 
 /** Keeps messages useful to the interface without exposing hidden custom messages. */
-export function visibleSessionMessages(messages: JsonObject[]): JsonObject[] {
-  return messages.filter((message) =>
+export function visibleSessionMessages(messages: SessionMessage[]): SessionMessage[] {
+  return messages.filter(({ message }) =>
     message.role === 'user'
     || message.role === 'assistant'
     || message.role === 'toolResult'
@@ -104,21 +104,33 @@ export function visibleSessionMessages(messages: JsonObject[]): JsonObject[] {
   )
 }
 
-function messageFromEntry(entry: JsonObject): JsonObject[] {
-  if (entry.type === 'message' && isObject(entry.message)) return [entry.message]
-  if (entry.type === 'compaction' && typeof entry.summary === 'string')
+/** Carries each entry's stable identity onto its visible messages (M1). */
+function entryMessages(entry: JsonObject): SessionMessage[] {
+  const entryId = typeof entry.id === 'string' ? entry.id : undefined
+  const parentEntryId = typeof entry.parentId === 'string' ? entry.parentId : undefined
+  if (entry.type === 'message' && isObject(entry.message)) {
+    return [{ entryId, parentEntryId, message: entry.message }]
+  }
+  if (entry.type === 'compaction' && typeof entry.summary === 'string') {
     return [{
-      role: 'custom',
-      customType: 'compaction',
-      content: entry.summary,
-      display: true,
+      message: {
+        role: 'custom',
+        customType: 'compaction',
+        content: entry.summary,
+        display: true,
+      },
     }]
+  }
   if (entry.type !== 'custom_message' || typeof entry.customType !== 'string') return []
   return [{
-    role: 'custom',
-    customType: entry.customType,
-    content: entry.content,
-    display: entry.display,
-    details: entry.details,
+    entryId,
+    parentEntryId,
+    message: {
+      role: 'custom',
+      customType: entry.customType,
+      content: entry.content,
+      display: entry.display,
+      ...(entry.details !== undefined ? { details: entry.details } : null),
+    },
   }]
 }

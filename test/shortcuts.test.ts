@@ -70,10 +70,10 @@ test('les nouveaux raccourcis par défaut sont définis', () => {
 
 test('extrait la dernière réponse assistant', () => {
   assert.equal(
-    lastAssistantText([{ role: 'assistant', content: 'Première' }, {
-      role: 'assistant',
-      content: [{ type: 'text', text: 'Dernière' }],
-    }]),
+    lastAssistantText([
+      { message: { role: 'assistant', content: 'Première' } },
+      { message: { role: 'assistant', content: [{ type: 'text', text: 'Dernière' }] } },
+    ]),
     'Dernière',
   )
 })

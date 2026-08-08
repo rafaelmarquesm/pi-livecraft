@@ -28,8 +28,11 @@ import {
   resolveWorkspaceFilePath,
   WorkspaceFileError,
 } from './workspace-file.ts'
-import { activeSessionMessages, LiveSessionEvents } from './session-snapshot.ts'
-import { loadPromptTemplates, savePromptTemplate } from './prompt-templates.ts'
+import { LiveSessionEvents } from './session-snapshot.ts'
+import { savePromptTemplate } from './prompt-templates.ts'
+import { SnapshotCaches } from './snapshot-cache.ts'
+import { requestContentTypeAllowed, requestOriginAllowed } from './request-guard.ts'
+import { capabilitiesFromCommands, detectPiVersion } from './pi-capabilities.ts'
 import { externalWorkspacePath, openPath } from './system-integration.ts'
 import { expandHomePath } from './home-path.ts'
 import type {
@@ -49,20 +52,26 @@ const liveSessionEvents = new Map<string, LiveSessionEvents>()
 let piEventSequence = 0
 const distDirectory = fileURLToPath(new URL('../dist/', import.meta.url))
 const quotas = new QuotaService(manager)
+const caches = new SnapshotCaches()
 const managerRuntime = new ManagerRuntimeMonitor(manager, (status) => {
   broadcast({ kind: 'event', event: 'manager_status', sessionId: '', data: status })
 })
 
 manager.on('event', (event: ManagerEvent) => {
   quotas.receiveManagerEvent(event)
-  if (event.event === 'session_exited' || event.event === 'session_reassigned')
+  if (event.event === 'session_exited' || event.event === 'session_reassigned') {
     liveSessionEvents.delete(event.sessionId)
+    caches.clear(event.sessionId)
+  }
   if (event.event === 'pi' && isObject(event.data)) {
     const sequence = ++piEventSequence
     const live = liveSessionEvents.get(event.sessionId) ?? new LiveSessionEvents()
     liveSessionEvents.set(event.sessionId, live)
     live.receive(event.data, sequence)
     broadcast({ ...event, sequence })
+    if (event.data.type === 'message_end' || event.data.type === 'agent_settled') {
+      void caches.refreshStateStats(manager, event.sessionId).catch(() => undefined)
+    }
     return
   }
   broadcast(event)
@@ -95,6 +104,13 @@ server.listen(port, host, () => {
 async function route(request: IncomingMessage, response: ServerResponse): Promise<void> {
   const method = request.method ?? 'GET'
   const url = new URL(request.url ?? '/', `http://${host}`)
+
+  if (method !== 'GET' && method !== 'HEAD') {
+    if (!requestContentTypeAllowed(request.headers['content-type']))
+      throw new HttpError(415, 'Request body must be JSON')
+    if (!requestOriginAllowed(request.headers.origin, request.headers['sec-fetch-site']))
+      throw new HttpError(403, 'Request origin is not allowed')
+  }
 
   if (method === 'GET' && url.pathname === '/api/health') {
     sendJson(response, manager.connected ? 200 : 503, {
@@ -407,22 +423,16 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
   const snapshotMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/snapshot$/)
   if (method === 'GET' && snapshotMatch) {
     const sessionId = decodeURIComponent(snapshotMatch[1])
-    const [state, entries, models, commands, stats] = await Promise.all([
-      piCommand(sessionId, { type: 'get_state' }),
-      piCommand(sessionId, { type: 'get_entries' }),
-      piCommand(sessionId, { type: 'get_available_models' }),
-      piCommand(sessionId, { type: 'get_commands' }),
-      piCommand(sessionId, { type: 'get_session_stats' }),
-    ])
-    const commandList = arrayData(commands, 'commands')
+    const cache = await caches.refresh(manager, sessionId)
     const snapshot: SessionSnapshot = {
-      state: objectData(state),
-      messages: activeSessionMessages(arrayData(entries, 'entries'), objectData(entries)?.leafId),
-      models: arrayData(models, 'models'),
-      commands: commandList,
-      promptTemplates: await loadPromptTemplates(commandList),
-      stats: objectData(stats),
+      state: cache.state,
+      messages: cache.messages,
+      models: cache.models,
+      commands: cache.commands,
+      promptTemplates: cache.promptTemplates,
+      stats: cache.stats,
       liveEvents: liveSessionEvents.get(sessionId)?.snapshot() ?? [],
+      capabilities: await capabilitiesFromCommands(await detectPiVersion(), cache.commands),
     }
     sendJson(response, 200, snapshot)
     return
@@ -462,9 +472,6 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
       systemPrompt: typeof body.systemPrompt === 'string' ? body.systemPrompt : undefined,
       thinkingLevel: typeof body.thinkingLevel === 'string' ? body.thinkingLevel : undefined,
       model: isModelBody(body.model),
-      extensions: Array.isArray(body.extensions)
-        ? body.extensions.filter((e: unknown): e is string => typeof e === 'string')
-        : undefined,
       tools: Array.isArray(body.tools)
         ? body.tools.filter((t: unknown): t is string => typeof t === 'string')
         : undefined,
@@ -495,21 +502,6 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
   }
 
   sendJson(response, 404, { error: 'Not found' })
-}
-
-async function piCommand(sessionId: string, command: JsonObject): Promise<JsonObject> {
-  const response = await manager.request({ action: 'command', sessionId, command })
-  if (!isObject(response)) throw new Error('Invalid response from Pi manager')
-  return response
-}
-
-function objectData(response: JsonObject): JsonObject | null {
-  return isObject(response.data) ? response.data : null
-}
-
-function arrayData(response: JsonObject, key: string): JsonObject[] {
-  if (!isObject(response.data) || !Array.isArray(response.data[key])) return []
-  return response.data[key].filter(isObject)
 }
 
 /** Canonicalizes a client-provided path and rejects missing paths or non-directories. */
