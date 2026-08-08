@@ -32,6 +32,15 @@ import { LiveSessionEvents } from './session-snapshot.ts'
 import { savePromptTemplate } from './prompt-templates.ts'
 import { SnapshotCaches } from './snapshot-cache.ts'
 import { requestContentTypeAllowed, requestOriginAllowed } from './request-guard.ts'
+import {
+  exportContentTypes,
+  exportFileName,
+  exportSessionHtml,
+  isExportFormat,
+  readSessionJsonl,
+} from './features/export/session-export.ts'
+import { sessionToMarkdown } from './features/export/session-markdown.ts'
+import type { SessionSummary } from '../shared/types.ts'
 import { capabilitiesFromCommands, detectPiVersion } from './pi-capabilities.ts'
 import { externalWorkspacePath, openPath } from './system-integration.ts'
 import { expandHomePath } from './home-path.ts'
@@ -435,6 +444,41 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
       capabilities: await capabilitiesFromCommands(await detectPiVersion(), cache.commands),
     }
     sendJson(response, 200, snapshot)
+    return
+  }
+
+  const exportMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/export$/)
+  if (method === 'POST' && exportMatch) {
+    const sessionId = decodeURIComponent(exportMatch[1])
+    const body = await readJsonBody(request)
+    if (!isExportFormat(body.format)) throw new HttpError(400, 'Format must be html, md or jsonl')
+    const format = body.format
+    const sessions = await manager.request({ action: 'list' }) as SessionSummary[]
+    const session = Array.isArray(sessions)
+      ? sessions.find((candidate) => candidate.id === sessionId)
+      : undefined
+    if (!session) throw new HttpError(404, 'Session not found')
+
+    let payload: Buffer
+    if (format === 'jsonl') {
+      // The path comes from the manager, never from the client (§5.1).
+      if (!session.sessionPath) throw new HttpError(409, 'Session is not persisted yet')
+      payload = await readSessionJsonl(session.sessionPath)
+    } else if (format === 'html') {
+      payload = await exportSessionHtml(manager, sessionId)
+    } else {
+      const cache = await caches.refresh(manager, sessionId)
+      payload = Buffer.from(
+        sessionToMarkdown(cache.messages, { name: session.name, cwd: session.cwd }),
+        'utf8',
+      )
+    }
+    response.writeHead(200, {
+      'Content-Type': exportContentTypes[format],
+      'Content-Disposition': `attachment; filename="${exportFileName(session.name, format)}"`,
+      'X-Content-Type-Options': 'nosniff',
+    })
+    response.end(payload)
     return
   }
 
