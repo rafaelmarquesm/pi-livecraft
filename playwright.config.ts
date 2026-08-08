@@ -3,7 +3,6 @@ import { defineConfig, devices } from '@playwright/test'
 // E2E runs against the real dev stack (Vite frontend proxying /api to the
 // backend). Offline mode keeps Pi from spending tokens while still allowing
 // session creation, fork points, search, and export (see spec §2.0).
-const backendPort = process.env.PI_LIVECRAFT_BACKEND_PORT ?? '43121'
 const vitePort = process.env.PI_LIVECRAFT_VITE_PORT ?? '5173'
 const baseURL = `http://127.0.0.1:${vitePort}`
 
