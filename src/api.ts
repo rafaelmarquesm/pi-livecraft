@@ -75,6 +75,40 @@ export async function listRecentSessions(cwd: string): Promise<RecentSession[]> 
   return request<RecentSession[]>(`/api/sessions/recent?cwd=${encodeURIComponent(cwd)}`)
 }
 
+export async function exportSession(
+  sessionId: string,
+  format: 'html' | 'md' | 'jsonl',
+): Promise<void> {
+  const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/export`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ format }),
+  })
+  if (!response.ok) {
+    const value: unknown = await response.json().catch(() => null)
+    throw new Error(
+      isObject(value) && typeof value.error === 'string'
+        ? value.error
+        : `Export failed (${response.status})`,
+    )
+  }
+  const blob = await response.blob()
+  const disposition = response.headers.get('Content-Disposition') ?? ''
+  const name = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `session.${format}`
+  const url = URL.createObjectURL(blob)
+  // api.ts is typechecked without a DOM lib (the node project), so the anchor
+  // is a structural shape instead of a DOM type.
+  const anchor = (globalThis as unknown as {
+    document?: { createElement(tag: string): { href: string; download: string; click(): void } }
+  })
+    .document
+    ?.createElement('a')
+  if (!anchor) throw new Error('Browser download is not available')
+  Object.assign(anchor, { href: url, download: name })
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
 export async function listDirectories(path: string): Promise<DirectoryListing> {
   return request<DirectoryListing>(`/api/directories?path=${encodeURIComponent(path)}`)
 }

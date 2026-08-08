@@ -138,6 +138,23 @@ const documentationCases: DocumentationCase[] = [
     ],
     allowedDocuments: ['.pi/skills/livecraft-ui/SKILL.md'],
   },
+  {
+    name: 'export',
+    prompt:
+      'Sans modifier le dépôt, prépare un plan précis pour ajouter um novo formato de exportação de sessão.',
+    expectedDocuments: [
+      'docs/README.md',
+      'docs/HOW-TO-EXPORT.md',
+    ],
+    expectedEvidence: [
+      { label: 'export owner', paths: ['server/features/export/session-export.ts'] },
+      { label: 'backend route', paths: ['server/backend.ts'] },
+    ],
+    allowedDocuments: [
+      'server/features/export/session-markdown.ts',
+      'src/features/dialogs/README.md',
+    ],
+  },
 ]
 
 /** Measures whether successful reads covered the expected documentation in order and began with the index. */

@@ -29,6 +29,7 @@ Step-by-step walkthroughs for common tasks. Each guide is self-contained: start 
 
 - **[Modify the composer](/docs/HOW-TO-COMPOSER.md)** — add a toolbar button, dropdown, or session stat.
 - **[Render extension UI](/docs/HOW-TO-EXTENSION-UI.md)** — status chips, widgets, titles, and draft prefills.
+- **[Export a session](/docs/HOW-TO-EXPORT.md)** — download the current conversation as HTML, Markdown, or JSONL.
 - **[Add a widget](/docs/HOW-TO-WIDGET.md)** — sidebar widget, API endpoint, and backend capability.
 - **[Add a conversation action](/docs/HOW-TO-CONVERSATION-ACTION.md)** — contextual action on a message or tool call.
 - **[Add a tool call presentation](/docs/HOW-TO-TOOL-PRESENTATION.md)** — custom display for a Pi tool in the conversation.

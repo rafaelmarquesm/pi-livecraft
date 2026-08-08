@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Copy assistant code blocks to the clipboard with a single click.
+- Export the current session from the command palette (`export-session`) as Markdown, JSONL, or HTML — the latter rendered by Pi via `export_html` and gated on that capability — with path-safe downloads and temporary-directory cleanup.
+- Fork a session from any user message ("Fork from here") and clone the active branch with the `clone-session` palette command; both gate on Pi capabilities and confirm before aborting a running turn.
+- Search the conversation with `search-conversation` (palette): case-insensitive matches with prev/next navigation, a counter, and scroll-to-match highlighting.
+- Show sessions forked or cloned from each other as a parent/child tree in the sidebar.
+- Track usage across sessions in a local ledger and inspect it in the new Usage right-sidebar widget (pure-SVG bars, `alt+u`).
+- Set a per-workspace USD budget in Settings; sending a prompt that exceeds it asks for confirmation first.
+- Pin sessions and attach tags or a note from the sidebar context menu (persisted per session file).
+- See Pi and manager process memory in the Settings "Pi session" tab (via `ps`, no extra dependency).
 - Host Pi extension UI: `setStatus` entries render as a status bar above the composer, `setWidget` blocks render above/below it with per-widget error isolation, `setTitle` updates the tab title with a fixed Livecraft prefix, and `set_editor_text` prefills the composer without ever silently replacing a non-empty draft.
 - Get native OS notifications when a background session finishes or fails after retries (only while the tab is hidden), with the tab title and favicon reflecting running work.
 - Cancel an in-progress retry (provider reconnection, compaction, or branch summary) with a "Cancel retries" button next to the composer's stop control.
