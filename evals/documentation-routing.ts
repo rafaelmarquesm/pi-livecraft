@@ -141,7 +141,7 @@ const documentationCases: DocumentationCase[] = [
   {
     name: 'export',
     prompt:
-      'Sans modifier le dépôt, prépare un plan précis pour ajouter um novo formato de exportação de sessão.',
+      'Sans modifier le dépôt, prépare un plan précis pour ajouter un nouveau format d\'export de session.',
     expectedDocuments: [
       'docs/README.md',
       'docs/HOW-TO-EXPORT.md',
