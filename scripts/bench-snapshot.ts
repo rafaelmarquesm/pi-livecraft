@@ -45,16 +45,38 @@ function syntheticSession(count: number, id: string, cwd: string): string {
   for (let i = 0; i < count; i += 1) {
     const entryId = `e${i.toString(16).padStart(8, '0')}`
     const role = i % 2 === 0 ? 'user' : 'assistant'
+    // Assistant entries need the full shape (api/provider/model/usage/stopReason)
+    // or Pi refuses to load the session — a thin fixture makes the bench
+    // "pass" while measuring an error response.
+    const message = role === 'user'
+      ? {
+        role,
+        content: [{ type: 'text', text: `Synthetic message ${i} ${'x'.repeat(120)}` }],
+        timestamp: now.getTime() + i,
+      }
+      : {
+        role,
+        content: [{ type: 'text', text: `Synthetic message ${i} ${'x'.repeat(120)}` }],
+        api: 'openai-completions',
+        provider: 'bench',
+        model: 'bench-model',
+        usage: {
+          input: 100,
+          output: 50,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 150,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.001 },
+        },
+        stopReason: 'stop',
+        timestamp: now.getTime() + i,
+      }
     lines.push(JSON.stringify({
       type: 'message',
       id: entryId,
       parentId,
       timestamp: new Date(now.getTime() + i).toISOString(),
-      message: {
-        role,
-        content: [{ type: 'text', text: `Synthetic message ${i} ${'x'.repeat(120)}` }],
-        timestamp: now.getTime() + i,
-      },
+      message,
     }))
     parentId = entryId
   }
@@ -89,8 +111,14 @@ async function main(): Promise<void> {
   const measure = async (): Promise<{ ms: number; bytes: number }> => {
     const start = performance.now()
     const res = await fetch(`${base}/api/sessions/${sid}/snapshot`)
-    const bytes = (await res.text()).length
-    return { ms: performance.now() - start, bytes }
+    const text = await res.text()
+    if (!res.ok) throw new Error(`Snapshot HTTP ${res.status}: ${text.slice(0, 200)}`)
+    const parsed = JSON.parse(text) as { messages?: unknown[] }
+    if (parsed.messages?.length !== MESSAGE_COUNT)
+      throw new Error(
+        `Snapshot returned ${parsed.messages?.length ?? 'no'} messages, expected ${MESSAGE_COUNT}`,
+      )
+    return { ms: performance.now() - start, bytes: text.length }
   }
 
   // Cold snapshot (first load populates the cache from the full entry list).
@@ -110,10 +138,14 @@ async function main(): Promise<void> {
   console.log(`Warm snapshot p50: ${warmP50.toFixed(1)} ms, ${warmBytes} bytes`)
   console.log(`Warm/cold byte ratio: ${(warmByteRatio * 100).toFixed(2)}%`)
 
+  // Note: the HTTP body always carries the full message list (the client
+  // needs it), so byte ratio is informational only. The O(delta) guarantee of
+  // M2 lives in backend I/O: warm refresh issues exactly 1 RPC and re-reads
+  // only new entries — verified in test/snapshot-cache.test.ts.
   const gates = [
     ['cold < 5000 ms', cold.ms < 5_000],
     ['warm p50 < 200 ms', warmP50 < 200],
-    ['warm bytes <= 5% of cold', warmByteRatio <= 0.05],
+    ['warm at least 5x faster than cold', warmP50 * 5 < cold.ms],
   ]
   for (const [name, pass] of gates) console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}`)
 

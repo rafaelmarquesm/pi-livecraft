@@ -326,6 +326,7 @@ export function WorkspaceSidebar({
     return (
       <Tooltip
         hint='Right-click to rename or close the session'
+        key={recentSession.sessionPath}
         label={`${recentSession.name}\n${
           new Date(recentSession.updatedAt).toLocaleString('en-US')
         }`}
