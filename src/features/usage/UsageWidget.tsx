@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Tooltip } from '../../components/Tooltip.tsx'
 import { getUsage, type UsageSnapshot } from '../../api.ts'
 import { formatTokens, formatTurnCost } from '../conversation/message-usage.ts'
-import { lastUsageDays, usageBarHeight, usageDayLabel } from './usage-display.ts'
+import { lastUsageDays, usageBarHeight, usageDayLabel, usageStatsParts } from './usage-display.ts'
 
 /** Self-fetched usage rollup with the same stale/error/refreshing semantics as QuotaSnapshot. */
 interface UsageState {
@@ -102,6 +102,7 @@ export function UsageWidget({ workspacePath }: { workspacePath: string }) {
 function UsageSummary({ snapshot }: { snapshot: UsageSnapshot }) {
   const days = lastUsageDays(snapshot.byDay)
   const maxCost = Math.max(0, ...days.map((day) => day.cost))
+  const statsParts = usageStatsParts(snapshot.totals)
   return (
     <>
       <dl className='usage-totals'>
@@ -118,6 +119,11 @@ function UsageSummary({ snapshot }: { snapshot: UsageSnapshot }) {
           <dd>{String(snapshot.totals.records)}</dd>
         </div>
       </dl>
+      {statsParts.length > 0 && (
+        <p aria-label='Inference metrics' className='usage-stats'>
+          {statsParts.map((part) => <span key={part}>{part}</span>)}
+        </p>
+      )}
       <section className='usage-days' aria-label='Cost per day'>
         <h2>Last 14 days</h2>
         <svg

@@ -62,6 +62,11 @@ test('extracts assistant usage keyed by entry id, costs verbatim from usage.cost
   assert.equal(records[0].timestamp, '2026-08-08T10:00:05.000Z')
   assert.equal(records[1].cost, 0.0054)
   assert.equal(records[1].model, 'claude-sonnet-4-5')
+  // turnMs = delta to the previous entry's timestamp (Backlog B): the user
+  // entry at 10:00:01 for the first assistant, the toolResult at 10:00:07 for
+  // the second (the post-tool stretch, even without billable usage itself).
+  assert.equal(records[0].turnMs, 4_000)
+  assert.equal(records[1].turnMs, 5_000)
 })
 
 test('includes toolResult and compaction usage (E9) — never a local price table', async () => {
@@ -80,6 +85,8 @@ test('includes toolResult and compaction usage (E9) — never a local price tabl
   // Compaction generation is part of get_session_stats.cost and must be counted too.
   assert.equal(records[2].entryId, 'dddddddd')
   assert.equal(records[2].cost, 0.365)
+  // turnMs comes from consecutive entry timestamps: assistant→toolResult→compaction→assistant.
+  assert.deepEqual(records.map((record) => record.turnMs), [3_000, 26_000, 270_000, 20_000])
 })
 
 test('skips entries without billable usage, valid ids, or user roles', () => {
@@ -96,6 +103,38 @@ test('skips entries without billable usage, valid ids, or user roles', () => {
     { type: 'message', id: '56789012', message: { role: 'user', usage: { cost: { total: 5 } } } },
   ])
   assert.deepEqual(records, [])
+})
+
+test('omits turnMs for the first entry, a broken timestamp chain, and non-increasing deltas', () => {
+  const usage = { cost: { total: 0.01 }, input: 10, output: 5 }
+  const records = usageRecordsForEntries([
+    // First billable entry: no previous entry to measure against.
+    {
+      type: 'message',
+      id: '11111111',
+      timestamp: '2026-08-08T10:00:05.000Z',
+      message: { role: 'assistant', usage },
+    },
+    // Entry without a usable timestamp breaks the chain for the next record.
+    { type: 'message', id: '22222222', message: { role: 'user', content: 'x' } },
+    {
+      type: 'message',
+      id: '33333333',
+      timestamp: '2026-08-08T10:00:12.000Z',
+      message: { role: 'assistant', usage },
+    },
+    // Timestamp equal to the previous entry's: the delta is not positive.
+    {
+      type: 'message',
+      id: '44444444',
+      timestamp: '2026-08-08T10:00:12.000Z',
+      message: { role: 'assistant', usage },
+    },
+  ])
+  assert.deepEqual(
+    records.map((record) => record.turnMs),
+    [undefined, undefined, undefined],
+  )
 })
 
 test('T-LEDGER-1: ledger total stays within the documented band of get_session_stats', async () => {
@@ -134,6 +173,9 @@ test('T-LEDGER-2: reprocessing the same entries never duplicates records', async
     assert.equal(records.length, 4)
     assert.equal(new Set(records.map((record) => record.entryId)).size, 4)
     assert.equal(content.endsWith('\n'), true)
+    // turnMs is derived at extraction and persists as part of the record.
+    assert.equal(records[0].turnMs, 3_000)
+    assert.equal(records[1].turnMs, 26_000)
   } finally {
     await rm(directory, { force: true, recursive: true })
   }
@@ -227,6 +269,15 @@ test('validates the store strictly at the boundary', () => {
     ['11111111'],
   )
   assert.deepEqual(parseUsageStore(''), [])
+  // turnMs is optional and validated when present.
+  assert.equal(
+    parseUsageStore(valid.replace('"cacheWrite":0}', '"cacheWrite":0,"turnMs":4000}'))[0].turnMs,
+    4000,
+  )
+  assert.throws(
+    () => parseUsageStore(valid.replace('"cacheWrite":0}', '"cacheWrite":0,"turnMs":-1}')),
+    /invalid record/,
+  )
 })
 
 test('rejects invalid session or workspace arguments', async () => {
@@ -299,17 +350,165 @@ test('rolls usage up by UTC day and model for one workspace', () => {
     cost: 0.0099 + 0.049 + 0.005,
     totalTokens: 2340 + 2590 + 100,
     records: 3,
+    // Backlog B derived metrics over the three demo records:
+    // cacheRead 1200 / (input 3400 + cacheRead 1200); output 430 > 0.
+    cacheHitRate: 1200 / 4600,
+    costPer1kOutput: (0.0099 + 0.049 + 0.005) / (430 / 1000),
+    inputOutputRatio: 3400 / 430,
+    // No record carries turnMs → no tok/s average.
   })
   assert.deepEqual(rollup.byDay, [
-    { day: '2026-08-09', cost: 0.049, totalTokens: 2590, records: 1 },
-    { day: '2026-08-08', cost: 0.0099 + 0.005, totalTokens: 2340 + 100, records: 2 },
+    {
+      day: '2026-08-09',
+      cost: 0.049,
+      totalTokens: 2590,
+      records: 1,
+      cacheHitRate: 400 / 2500,
+      costPer1kOutput: 0.049 / (90 / 1000),
+      inputOutputRatio: 2100 / 90,
+    },
+    {
+      day: '2026-08-08',
+      cost: 0.0099 + 0.005,
+      totalTokens: 2340 + 100,
+      records: 2,
+      cacheHitRate: 800 / 2100,
+      costPer1kOutput: (0.0099 + 0.005) / (340 / 1000),
+      inputOutputRatio: 1300 / 340,
+    },
   ])
   assert.deepEqual(rollup.byModel, [
-    { model: 'claude-opus-4-1', cost: 0.049, totalTokens: 2590, records: 1 },
-    { model: 'claude-sonnet-4-5', cost: 0.0099, totalTokens: 2340, records: 1 },
-    { model: 'unknown', cost: 0.005, totalTokens: 100, records: 1 },
+    {
+      model: 'claude-opus-4-1',
+      cost: 0.049,
+      totalTokens: 2590,
+      records: 1,
+      cacheHitRate: 400 / 2500,
+      costPer1kOutput: 0.049 / (90 / 1000),
+      inputOutputRatio: 2100 / 90,
+    },
+    {
+      model: 'claude-sonnet-4-5',
+      cost: 0.0099,
+      totalTokens: 2340,
+      records: 1,
+      cacheHitRate: 800 / 2000,
+      costPer1kOutput: 0.0099 / (340 / 1000),
+      inputOutputRatio: 1200 / 340,
+    },
+    {
+      // Zero-output bucket: cache rate 0, cost/1k and ratio omitted.
+      model: 'unknown',
+      cost: 0.005,
+      totalTokens: 100,
+      records: 1,
+      cacheHitRate: 0,
+    },
   ])
   const other = rollupUsageRecords(records, '/workspaces/other')
-  assert.deepEqual(other.totals, { cost: 0.01, totalTokens: 200, records: 1 })
-  assert.deepEqual(other.byModel, [{ model: 'unknown', cost: 0.01, totalTokens: 200, records: 1 }])
+  assert.deepEqual(other.totals, { cost: 0.01, totalTokens: 200, records: 1, cacheHitRate: 0 })
+  assert.deepEqual(other.byModel, [
+    { model: 'unknown', cost: 0.01, totalTokens: 200, records: 1, cacheHitRate: 0 },
+  ])
+})
+
+test('derives cache hit rate, cost per 1k output, ratio, and tok/s per bucket (Backlog B)', () => {
+  const records: UsageRecord[] = [
+    {
+      entryId: '11111111',
+      sessionId: 's1',
+      cwd: '/w',
+      timestamp: '2026-08-08T10:00:05.000Z',
+      model: 'm1',
+      cost: 0.0099,
+      totalTokens: 2340,
+      input: 1200,
+      output: 340,
+      cacheRead: 800,
+      cacheWrite: 0,
+      turnMs: 4000,
+    },
+    {
+      // Zero-input record: the cache rate denominator is 0 → rate 0.
+      entryId: '22222222',
+      sessionId: 's1',
+      cwd: '/w',
+      timestamp: '2026-08-08T11:00:00.000Z',
+      model: 'm1',
+      cost: 0.001,
+      totalTokens: 50,
+      input: 0,
+      output: 50,
+      cacheRead: 0,
+      cacheWrite: 0,
+      turnMs: 5000,
+    },
+    {
+      // Zero-output record with turnMs: cost/1k and ratio omitted, and it
+      // contributes nothing to the tok/s average.
+      entryId: '33333333',
+      sessionId: 's1',
+      cwd: '/w',
+      timestamp: '2026-08-08T12:00:00.000Z',
+      cost: 0.005,
+      totalTokens: 100,
+      input: 100,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      turnMs: 3000,
+    },
+    {
+      // No turnMs (legacy data): excluded from the tok/s average.
+      entryId: '44444444',
+      sessionId: 's1',
+      cwd: '/w',
+      timestamp: '2026-08-08T13:00:00.000Z',
+      model: 'm1',
+      cost: 0.0054,
+      totalTokens: 1620,
+      input: 900,
+      output: 120,
+      cacheRead: 600,
+      cacheWrite: 0,
+    },
+    {
+      entryId: '55555555',
+      sessionId: 's2',
+      cwd: '/other',
+      timestamp: '2026-08-08T10:00:00.000Z',
+      cost: 0.01,
+      totalTokens: 100,
+      input: 100,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    },
+  ]
+  const rollup = rollupUsageRecords(records, '/w')
+  // Generation rates: 340/(4000/1000) = 85 and 50/(5000/1000) = 10 → mean 47.5;
+  // the zero-output and turnMs-less records are ignored.
+  assert.deepEqual(rollup.totals, {
+    cost: 0.0099 + 0.001 + 0.005 + 0.0054,
+    totalTokens: 2340 + 50 + 100 + 1620,
+    records: 4,
+    cacheHitRate: 1400 / (2200 + 1400),
+    costPer1kOutput: (0.0099 + 0.001 + 0.005 + 0.0054) / (510 / 1000),
+    inputOutputRatio: 2200 / 510,
+    tokensPerSecond: 47.5,
+  })
+  // The m1 bucket keeps the same tok/s average; the zero-output unknown bucket
+  // reports only the (zero) cache rate.
+  assert.equal(rollup.byModel[0].model, 'm1')
+  assert.equal(rollup.byModel[0].tokensPerSecond, 47.5)
+  assert.deepEqual(rollup.byModel[1], {
+    model: 'unknown',
+    cost: 0.005,
+    totalTokens: 100,
+    records: 1,
+    cacheHitRate: 0,
+  })
+  // Workspace filtering still applies to the derived metrics.
+  const other = rollupUsageRecords(records, '/other')
+  assert.deepEqual(other.totals, { cost: 0.01, totalTokens: 100, records: 1, cacheHitRate: 0 })
 })

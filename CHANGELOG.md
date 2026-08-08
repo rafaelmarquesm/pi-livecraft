@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Set a per-workspace USD budget in Settings; sending a prompt that exceeds it asks for confirmation first.
 - Pin sessions and attach tags or a note from the sidebar context menu (persisted per session file).
 - See Pi and manager process memory in the Settings "Pi session" tab (via `ps`, no extra dependency).
+- Generate a conventional commit message from the staged diff with a "Generate" button in the Git widget (50 KB diff cap, binary files filtered, never commits directly).
+- See inference metrics in the Usage widget: cache hit rate, cost per 1k output tokens, input:output ratio, and approximate generation speed (tok/s).
 - Host Pi extension UI: `setStatus` entries render as a status bar above the composer, `setWidget` blocks render above/below it with per-widget error isolation, `setTitle` updates the tab title with a fixed Livecraft prefix, and `set_editor_text` prefills the composer without ever silently replacing a non-empty draft.
 - Get native OS notifications when a background session finishes or fails after retries (only while the tab is hidden), with the tab title and favicon reflecting running work.
 - Cancel an in-progress retry (provider reconnection, compaction, or branch summary) with a "Cancel retries" button next to the composer's stop control.

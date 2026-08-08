@@ -25,6 +25,14 @@ export interface UsageRecord {
   cwd: string
   /** Entry timestamp in ISO 8601 (UTC); drives the by-day rollup. */
   timestamp: string
+  /**
+   * Approximate generation duration in ms: the delta between this entry's
+   * timestamp and the previous entry's timestamp (Backlog B). Derived at
+   * extraction from consecutive entries; absent for the first entry, for
+   * records with unusable timestamps, or for records written before this
+   * field existed — such records are simply excluded from tok/s averages.
+   */
+  turnMs?: number
   /** Model that produced the usage, when the entry reports one (assistant messages). */
   model?: string
   /** Billed cost in USD from `usage.cost.total`. */
@@ -44,6 +52,20 @@ export interface UsageAggregate {
   cost: number
   totalTokens: number
   records: number
+  /**
+   * Cache hit rate `cacheRead / (input + cacheRead)` in 0..1. Always present
+   * for a new rollup; 0 when the denominator is 0 (nothing billed).
+   */
+  cacheHitRate?: number
+  /** Cost per 1k output tokens in USD; omitted when the bucket has no output. */
+  costPer1kOutput?: number
+  /** input:output token ratio; omitted when the bucket has no output. */
+  inputOutputRatio?: number
+  /**
+   * Mean generation throughput in output tokens/s, averaged over records with
+   * a `turnMs` and positive output; omitted when no such record exists.
+   */
+  tokensPerSecond?: number
 }
 
 /** Rollup served by GET /api/usage?cwd=… */
@@ -78,15 +100,30 @@ const entryIdPattern = /^[0-9a-f]{8}$/
  */
 export function usageRecordsForEntries(entries: JsonObject[]): UsageEntryUsage[] {
   const records: UsageEntryUsage[] = []
+  // Timestamp of the previous entry in the array (append order). The delta
+  // between consecutive entries approximates the generation duration of the
+  // current one; a break in the chain (unusable timestamp) drops turnMs for
+  // this and the following record instead of guessing across the gap.
+  let previousTimestampMs: number | null = null
   for (const entry of entries) {
-    if (!isObject(entry) || typeof entry.id !== 'string' || !entryIdPattern.test(entry.id)) continue
+    if (!isObject(entry)) continue
+    const timestampMs = entryTimestampMs(entry)
     const usage = usageOfEntry(entry)
-    if (usage === null) continue
-    const timestamp = entryTimestamp(entry)
-    if (timestamp === null) continue
+    if (
+      typeof entry.id !== 'string' || !entryIdPattern.test(entry.id) || usage === null
+      || timestampMs === null
+    ) {
+      previousTimestampMs = timestampMs
+      continue
+    }
+    const turnMs = previousTimestampMs !== null && timestampMs > previousTimestampMs
+      ? timestampMs - previousTimestampMs
+      : undefined
+    previousTimestampMs = timestampMs
     records.push({
       entryId: entry.id,
-      timestamp,
+      timestamp: new Date(timestampMs).toISOString(),
+      turnMs,
       model: usage.model,
       cost: usage.cost,
       totalTokens: usage.totalTokens,
@@ -105,27 +142,32 @@ export function usageRecordsForEntries(entries: JsonObject[]): UsageEntryUsage[]
  * and tokens and counting records. Floats are summed raw — consumers compare
  * against `get_session_stats` with the documented T-LEDGER-1 band instead of
  * exact equality.
+ *
+ * Each bucket also derives inference metrics (Backlog B): cache hit rate
+ * (`cacheRead / (input + cacheRead)`, 0 on a zero denominator), cost per 1k
+ * output tokens and the input:output ratio (both omitted when the bucket has
+ * no output), and mean generation throughput in output tokens/s averaged over
+ * records carrying a `turnMs` and positive output (omitted when none). All
+ * derived fields are optional so older consumers keep working.
  */
 export function rollupUsageRecords(records: UsageRecord[], cwd: string): UsageRollup {
   const scoped = records.filter((record) => record.cwd === cwd)
-  const totals: UsageAggregate = { cost: 0, totalTokens: 0, records: 0 }
-  const byDay = new Map<string, UsageAggregate>()
-  const byModel = new Map<string, UsageAggregate>()
+  const totals = emptyCounters()
+  const byDay = new Map<string, AggregateCounters>()
+  const byModel = new Map<string, AggregateCounters>()
   for (const record of scoped) {
-    totals.cost += record.cost
-    totals.totalTokens += record.totalTokens
-    totals.records += 1
+    mergeRecord(totals, record)
     accumulate(byDay, record.timestamp.slice(0, 10), record)
     accumulate(byModel, record.model ?? 'unknown', record)
   }
   return {
     cwd,
-    totals,
+    totals: toAggregate(totals),
     byDay: [...byDay.entries()]
-      .map(([day, aggregate]) => ({ day, ...aggregate }))
+      .map(([day, counters]) => ({ day, ...toAggregate(counters) }))
       .sort((a, b) => b.day.localeCompare(a.day)),
     byModel: [...byModel.entries()]
-      .map(([model, aggregate]) => ({ model, ...aggregate }))
+      .map(([model, counters]) => ({ model, ...toAggregate(counters) }))
       .sort((a, b) => a.model.localeCompare(b.model)),
   }
 }
@@ -259,13 +301,14 @@ function usageCounters(value: unknown): UsageCounters | null {
   }
 }
 
-function entryTimestamp(entry: JsonObject): string | null {
+/** Entry timestamp as epoch ms, resolving `entry.timestamp` or the message timestamp. */
+function entryTimestampMs(entry: JsonObject): number | null {
   const entryTime = typeof entry.timestamp === 'string' ? Date.parse(entry.timestamp) : NaN
-  if (Number.isFinite(entryTime)) return new Date(entryTime).toISOString()
+  if (Number.isFinite(entryTime)) return entryTime
   if (
     isObject(entry.message) && typeof entry.message.timestamp === 'number'
     && Number.isFinite(entry.message.timestamp)
-  ) return new Date(entry.message.timestamp).toISOString()
+  ) return entry.message.timestamp
   return null
 }
 
@@ -283,6 +326,8 @@ function isUsageRecord(value: unknown): value is UsageRecord {
     value.model !== undefined && (typeof value.model !== 'string' || value.model.length === 0
       || value.model.length > 200)
   ) return false
+  if (value.turnMs !== undefined && (!isFiniteNumber(value.turnMs) || value.turnMs < 0))
+    return false
   return ['cost', 'totalTokens', 'input', 'output', 'cacheRead', 'cacheWrite']
     .every((key) => isFiniteNumber(value[key]) && value[key] >= 0)
 }
@@ -305,16 +350,70 @@ function stripPartialTrailingLine(content: string): string {
   return lastNewline >= 0 ? content.slice(0, lastNewline + 1) : ''
 }
 
+/** Running sums behind one aggregate; derived metrics are computed on output. */
+interface AggregateCounters {
+  cost: number
+  totalTokens: number
+  records: number
+  input: number
+  output: number
+  cacheRead: number
+  /** Sum of per-record generation rates (output tokens/s) for records with a turnMs. */
+  rateSum: number
+  /** Number of records contributing to rateSum. */
+  rateRecords: number
+}
+
+function emptyCounters(): AggregateCounters {
+  return {
+    cost: 0,
+    totalTokens: 0,
+    records: 0,
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    rateSum: 0,
+    rateRecords: 0,
+  }
+}
+
+function mergeRecord(counters: AggregateCounters, record: UsageRecord): void {
+  counters.cost += record.cost
+  counters.totalTokens += record.totalTokens
+  counters.records += 1
+  counters.input += record.input
+  counters.output += record.output
+  counters.cacheRead += record.cacheRead
+  if (isFiniteNumber(record.turnMs) && record.turnMs > 0 && record.output > 0) {
+    counters.rateSum += record.output / (record.turnMs / 1000)
+    counters.rateRecords += 1
+  }
+}
+
+function toAggregate(counters: AggregateCounters): UsageAggregate {
+  const aggregate: UsageAggregate = {
+    cost: counters.cost,
+    totalTokens: counters.totalTokens,
+    records: counters.records,
+  }
+  const billedInput = counters.input + counters.cacheRead
+  aggregate.cacheHitRate = billedInput > 0 ? counters.cacheRead / billedInput : 0
+  if (counters.output > 0) {
+    aggregate.costPer1kOutput = counters.cost / (counters.output / 1000)
+    aggregate.inputOutputRatio = counters.input / counters.output
+  }
+  if (counters.rateRecords > 0) aggregate.tokensPerSecond = counters.rateSum / counters.rateRecords
+  return aggregate
+}
+
 function accumulate(
-  buckets: Map<string, UsageAggregate>,
+  buckets: Map<string, AggregateCounters>,
   key: string,
   record: UsageRecord,
 ): void {
-  const aggregate = buckets.get(key) ?? { cost: 0, totalTokens: 0, records: 0 }
-  aggregate.cost += record.cost
-  aggregate.totalTokens += record.totalTokens
-  aggregate.records += 1
-  buckets.set(key, aggregate)
+  const counters = buckets.get(key) ?? emptyCounters()
+  mergeRecord(counters, record)
+  buckets.set(key, counters)
 }
 
 async function readStoreText(path: string): Promise<string> {

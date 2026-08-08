@@ -1,4 +1,25 @@
-import type { UsageDay } from '../../api.ts'
+import type { UsageDay, UsageTotals } from '../../api.ts'
+import { formatTurnCost } from '../conversation/message-usage.ts'
+
+/**
+ * Derived inference metrics added to every rollup aggregate by Backlog B
+ * (see `UsageAggregate` in server/features/usage/usage-ledger.ts). The
+ * `UsageTotals` type in api.ts does not declare them yet — they arrive as
+ * optional fields in the GET /api/usage payload, so reading them through
+ * this intersection is type-safe on both ends.
+ */
+export interface UsageDerivedTotals {
+  /** Cache hit rate in 0..1 (`cacheRead / (input + cacheRead)`); 0 when nothing was billed. */
+  cacheHitRate?: number
+  /** Cost per 1k output tokens in USD; absent for buckets without output. */
+  costPer1kOutput?: number
+  /** input:output token ratio; absent for buckets without output. */
+  inputOutputRatio?: number
+  /** Mean generation throughput in output tokens/s; absent when no record carries turnMs. */
+  tokensPerSecond?: number
+}
+
+export type UsageStatsSource = UsageTotals & UsageDerivedTotals
 
 /**
  * Height of a day bar as a percentage of the tallest day in the chart window.
@@ -43,4 +64,56 @@ export function lastUsageDays(
     window.push(byDate.get(key) ?? zeroDay(key))
   }
   return window
+}
+
+/** Renders the cache hit rate as a percentage ("34%"). */
+export function formatCacheHitRate(value: number): string {
+  return `${Math.round(value * 100)}%`
+}
+
+/** Renders the cost per 1k output tokens, reusing the shared USD formatter. */
+export function formatCostPer1kOutput(value: number): string {
+  return `${formatTurnCost(value)}/1k out`
+}
+
+/** Renders the input:output ratio as "1:4" / "4:1" / "1.5:1" (one side normalized to 1). */
+export function formatInputOutputRatio(value: number): string {
+  const side = (n: number): string => {
+    const tenths = Math.round(n * 10)
+    return tenths % 10 === 0 ? String(tenths / 10) : `${tenths / 10}`
+  }
+  return value >= 1 ? `${side(value)}:1` : `1:${side(1 / value)}`
+}
+
+/** Renders generation throughput, one decimal below 10 tok/s, integers above. */
+export function formatTokensPerSecond(value: number): string {
+  const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10
+  return String(rounded)
+}
+
+/**
+ * Formats the derived inference metrics of one aggregate into the compact
+ * stats parts rendered by the Usage widget (Backlog B). Each metric is
+ * included only when the payload carries it, so snapshots from an older
+ * backend produce an empty list and the widget shows nothing.
+ */
+export function usageStatsParts(source: UsageStatsSource): string[] {
+  const parts: string[] = []
+  const cacheHitRate = source.cacheHitRate
+  if (isFiniteNumber(cacheHitRate)) parts.push(`cache ${formatCacheHitRate(cacheHitRate)}`)
+  const costPer1kOutput = source.costPer1kOutput
+  if (isFiniteNumber(costPer1kOutput)) parts.push(formatCostPer1kOutput(costPer1kOutput))
+  const inputOutputRatio = source.inputOutputRatio
+  if (isFiniteNumber(inputOutputRatio) && inputOutputRatio > 0) {
+    parts.push(`${formatInputOutputRatio(inputOutputRatio)} in:out`)
+  }
+  const tokensPerSecond = source.tokensPerSecond
+  if (isFiniteNumber(tokensPerSecond) && tokensPerSecond > 0) {
+    parts.push(`${formatTokensPerSecond(tokensPerSecond)} tok/s`)
+  }
+  return parts
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
 }
