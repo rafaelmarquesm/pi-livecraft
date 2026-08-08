@@ -23,6 +23,7 @@
     "eval:documentation-routing": "node --test evals/documentation-routing.ts",
     "eval:commit-message": "node --test evals/commit-message.ts",
     "bench:snapshot": "node scripts/bench-snapshot.ts",
+    "bench:memory": "node scripts/bench-memory.ts",
     "preview": "vite preview --host 127.0.0.1",
     "prepare": "husky"
   },
