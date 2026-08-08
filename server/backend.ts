@@ -49,7 +49,7 @@ import {
   validateSessionMeta,
 } from './features/sessions/session-meta-store.ts'
 import type { SessionMeta, SessionSummary } from '../shared/types.ts'
-import { capabilitiesFromCommands, detectPiVersion } from './pi-capabilities.ts'
+import { detectPiCapabilities } from './pi-capabilities.ts'
 import { externalWorkspacePath, openPath } from './system-integration.ts'
 import { expandHomePath } from './home-path.ts'
 import type {
@@ -535,7 +535,7 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
       promptTemplates: cache.promptTemplates,
       stats: cache.stats,
       liveEvents: liveSessionEvents.get(sessionId)?.snapshot() ?? [],
-      capabilities: await capabilitiesFromCommands(await detectPiVersion(), cache.commands),
+      capabilities: await detectPiCapabilities(),
     }
     sendJson(response, 200, snapshot)
     return
