@@ -3,6 +3,7 @@
 @import "./features/right-sidebar/right-sidebar.css";
 @import "./features/git/git.css";
 @import "./features/quotas/quotas.css";
+@import "./features/usage/usage.css";
 @import "./features/todo/todo.css";
 @import "./features/conversation/conversation.css";
 @import "./features/conversation/messages.css";

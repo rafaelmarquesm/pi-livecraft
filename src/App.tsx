@@ -4,14 +4,17 @@ import {
   commitChanges,
   createSession,
   discardChanges,
+  exportSession,
   getGitFileDiff,
   getGitSnapshot,
   getQuotas,
+  getSessionMeta,
   improvePrompt,
   openExplorer,
   openSession,
   openTerminal,
   pushCommits,
+  putSessionMeta,
   refreshQuotas,
   resetGitCommit,
   restartManager,
@@ -28,6 +31,8 @@ import type {
   JsonObject,
   ManagerRuntimeStatus,
   QuotaSnapshot,
+  SessionMeta,
+  SessionMetaStore,
   SessionSummary,
 } from '../shared/types.ts'
 import { isObject } from '../shared/is-object.ts'
@@ -44,12 +49,14 @@ import {
   nativeNotificationApi,
 } from './features/notifications/native-notifications.ts'
 import { documentTitleFor, faviconDataUrl } from './features/notifications/tab-title.ts'
+import { budgetExceeded, readBudgetUsd } from './features/settings/budget.ts'
 import { extensionDocumentTitle } from './features/extension-ui/document-title.ts'
 import { sessionActivity, type PiConnection } from './features/conversation/activity.ts'
 import { Conversation } from './features/conversation/Conversation.tsx'
 import { useConversationRuntime } from './features/conversation/useConversationRuntime.ts'
 import { AskUserQuestionDialog, ExtensionDialog } from './features/dialogs/Dialogs.tsx'
 import { ConfirmDialog } from './features/dialogs/ConfirmDialog.tsx'
+import { ExportDialog } from './features/dialogs/ExportDialog.tsx'
 import {
   isAgentSelector,
   isAskUserQuestionDialog,
@@ -157,6 +164,7 @@ function App() {
     agentOptionsLoadingRef.current = agentOptionsLoading
   }, [agentOptionsLoading])
   const [dialog, setDialog] = useState<UiDialog | null>(null)
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [toasts, setToasts] = useState<Toast[]>([])
 
   // Extension UI host (M7): per-session display state reduced from
@@ -209,6 +217,7 @@ function App() {
   )
   const [submitRequest, setSubmitRequest] = useState(0)
   const [focusComposerRequest, setFocusComposerRequest] = useState(0)
+  const [conversationSearchRequest, setConversationSearchRequest] = useState(0)
   const [composerDraftRequest, setComposerDraftRequest] = useState<
     { id: string; message: string; sessionId: string }
   >()
@@ -408,6 +417,34 @@ function App() {
   const currentQuotaProvider = quotaProviderForModel(model?.provider)
   const currentQuotaProviderRef = useRef(currentQuotaProvider)
   currentQuotaProviderRef.current = currentQuotaProvider
+
+  // Session metadata (pin/tags/note) — global, keyed by canonical session path.
+  const [sessionMeta, setSessionMeta] = useState<SessionMetaStore>({})
+
+  useEffect(() => {
+    let active = true
+    void getSessionMeta(workspacePath)
+      .then((meta) => {
+        if (active) setSessionMeta(meta)
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [workspacePath])
+
+  const updateSessionMeta = useCallback(
+    async (sessionPath: string, meta: SessionMeta): Promise<void> => {
+      const saved = await putSessionMeta(workspacePath, sessionPath, meta)
+      setSessionMeta((current) => {
+        const next = { ...current }
+        if (Object.keys(saved).length === 0) delete next[sessionPath]
+        else next[sessionPath] = saved
+        return next
+      })
+    },
+    [workspacePath],
+  )
 
   const visibleToasts = toasts.filter((toast) =>
     toast.sessionId === null || toast.sessionId === selectedId
@@ -784,6 +821,16 @@ function App() {
         managerEvent.event === 'manager_connected' || managerEvent.event === 'session_created'
         || managerEvent.event === 'session_exited' || managerEvent.event === 'session_reassigned'
       ) void refreshSessions()
+      // A reassignment that keeps the manager session id (fork/clone —
+      // reuse emits data.newSessionId and replaces the session) changed the
+      // session file on the Pi side; the backend cleared the snapshot cache,
+      // so refetch the selected branch or the UI stays stale until the next
+      // Pi event.
+      if (
+        managerEvent.event === 'session_reassigned'
+        && managerEvent.sessionId === selectedIdRef.current
+        && !isObject(managerEvent.data)
+      ) void refreshSnapshot(selectedIdRef.current)
       if (managerEvent.event === 'session_exited') {
         setExtensionUi((current) => {
           if (!(managerEvent.sessionId in current)) return current
@@ -809,6 +856,7 @@ function App() {
     clearManagerUnavailableToasts,
     handleManagerPiEvent,
     refreshSessions,
+    refreshSnapshot,
     resetEventSequence,
     setExtensionUi,
     showToast,
@@ -819,6 +867,27 @@ function App() {
   const selectedSessionId = selectedSession?.id
   const selectedSessionStatus = selectedSession?.status
   const sessionIsLoading = Boolean(selectedSessionId && snapshotSessionId !== selectedSessionId)
+
+  /** Forks the conversation from a user message, creating a new branch (Fase 3.1). */
+  const handleForkMessage = useCallback((entryId: string): void => {
+    if (!selectedId) return
+    const fork = (): void => {
+      void sendPiCommand(selectedId, { type: 'fork', entryId }).catch((cause) =>
+        showToast('error', messageOf(cause))
+      )
+    }
+    if (selectedSessionStatus === 'running') {
+      void requestConfirm(
+        'Fork session',
+        'Forking aborts the active turn and rewrites the branch. Continue?',
+      )
+        .then((confirmed) => {
+          if (confirmed) fork()
+        })
+      return
+    }
+    fork()
+  }, [requestConfirm, selectedId, selectedSessionStatus, showToast])
 
   // Live tab title (single writer) and running favicon badge.
   const activitySuffix = selectedSession?.status === 'running'
@@ -887,6 +956,24 @@ function App() {
       behavior: 'steer' | 'followUp',
       isCommand: boolean,
     ) => {
+      // Fase 4.3: non-command prompts are gated by the per-session budget
+      // ceiling; commands (/...) always bypass the guard.
+      if (!isCommand) {
+        const budget = readBudgetUsd()
+        const cost = snapshot.stats?.cost
+        if (cost !== undefined && budget !== null && budgetExceeded(cost, budget)) {
+          const ok = await requestConfirm(
+            'Budget exceeded',
+            `Session cost is $${cost.toFixed(2)} against a $${
+              budget.toFixed(2)
+            } budget. Send anyway?`,
+          )
+          if (!ok) {
+            showToast('notice', 'Message not sent — the session is over its budget.')
+            return
+          }
+        }
+      }
       const command: JsonObject = { type: 'prompt', message, images }
       const isSteering = !isCommand && selectedSessionStatus === 'running' && behavior === 'steer'
       if (selectedSessionStatus === 'running') command.streamingBehavior = behavior
@@ -915,10 +1002,13 @@ function App() {
       refreshSessions,
       removeLiveMessage,
       removePendingSteering,
+      requestConfirm,
       selectedId,
       selectedSessionStatus,
       sessions,
+      showToast,
       snapshot.messages,
+      snapshot.stats,
     ],
   )
   const handleComposerAbort = useCallback(() => sendPiCommand(selectedId, { type: 'abort' }), [
@@ -1070,12 +1160,28 @@ function App() {
       setDirectoryPickerOpen(true)
       return
     }
+    if (id === 'export-session') {
+      if (!selectedId) return
+      setExportDialogOpen(true)
+      return
+    }
+    if (id === 'clone-session') {
+      if (!selectedId) return
+      void sendPiCommand(selectedId, { type: 'clone' }).catch((cause) =>
+        showToast('error', messageOf(cause))
+      )
+      return
+    }
     if (id === 'workspace-previous' && recentWorkspacePaths.length > 1) {
       selectWorkspace(recentWorkspacePaths[1])
       return
     }
     if (id === 'focus-composer') {
       setFocusComposerRequest((current) => current + 1)
+      return
+    }
+    if (id === 'search-conversation') {
+      setConversationSearchRequest((current) => current + 1)
       return
     }
     if (id === 'next-session' || id === 'previous-session') {
@@ -1107,6 +1213,8 @@ function App() {
     sentSessions,
     analysisAvailable,
     setDirectoryPickerOpen,
+    setConversationSearchRequest,
+    setExportDialogOpen,
     setSelectedId,
     showToast,
     snapshot.messages,
@@ -1138,6 +1246,8 @@ function App() {
             ] as CommandId[])
               .includes(definition.id) && !selectedSession
           || (definition.id === 'abort' && selectedSession?.status !== 'running')
+          || (definition.id === 'clone-session'
+            && (snapshot.capabilities?.commands['clone'] !== true || !selectedSession))
           || (definition.id === 'workspace-previous' && recentWorkspacePaths.length < 2)
           || (definition.id === 'next-session'
             && (selectedIndex === -1 || selectedIndex >= visibleIds.length - 1))
@@ -1155,6 +1265,7 @@ function App() {
     sentSessions,
     analysisAvailable,
     shortcuts,
+    snapshot.capabilities,
     workspacePath,
   ])
 
@@ -1280,6 +1391,8 @@ function App() {
         onRenameSession={renameManagedSession}
         onResize={updateWorkspaceSidebarWidth}
         onToggleCollapsed={toggleWorkspaceSidebar}
+        sessionMeta={sessionMeta}
+        onUpdateSessionMeta={updateSessionMeta}
       />
 
       <main className='workspace'>
@@ -1300,14 +1413,17 @@ function App() {
                     activity={displayedActivity}
                     agentName={selectedSession.activeAgent}
                     conversationView={conversationView}
+                    forkAvailable={snapshot.capabilities?.commands['fork'] === true}
                     key={selectedSession.id}
                     liveMessages={liveMessages}
                     messages={snapshot.messages}
                     navigationRequest={conversationNavigation}
                     onError={handleConversationError}
+                    onForkMessage={handleForkMessage}
                     pendingSteering={pendingSteering}
                     repositoryRoot={gitSnapshot?.root}
                     scrollToBottomRequest={scrollToBottomRequest}
+                    searchRequest={conversationSearchRequest}
                     workingDirectory={selectedSession.cwd}
                     toolExecutions={toolExecutions}
                   />
@@ -1568,6 +1684,18 @@ function App() {
           title={confirmHost.title}
           onCancel={() => resolveConfirm(false)}
           onConfirm={() => resolveConfirm(true)}
+        />
+      )}
+      {exportDialogOpen && (
+        <ExportDialog
+          htmlAvailable={snapshot.capabilities?.commands['export_html'] === true}
+          onCancel={() => setExportDialogOpen(false)}
+          onPick={(format) => {
+            setExportDialogOpen(false)
+            void exportSession(selectedId, format)
+              .then(() => showToast('notice', 'Export downloaded.'))
+              .catch((cause) => showToast('error', messageOf(cause)))
+          }}
         />
       )}
       {commandPaletteOpen && (

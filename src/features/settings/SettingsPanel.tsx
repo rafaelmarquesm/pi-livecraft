@@ -12,6 +12,8 @@ import {
   type ThemeVariable,
 } from './themes.ts'
 import { capabilityEntries } from './capabilities.ts'
+import { getProcesses, type ProcessSnapshot } from '../../api.ts'
+import { readBudgetUsd, writeBudgetUsd } from './budget.ts'
 
 const themeVariableLabels: Record<ThemeVariable, string> = {
   canvas: 'Background',
@@ -418,6 +420,172 @@ function AboutSettings({ capabilities }: AboutSettingsProps) {
   )
 }
 
+/**
+ * Per-session budget ceiling in USD (Fase 4.3), persisted to localStorage.
+ * Self-contained: reads the stored value on mount, validates a positive
+ * finite number (or empty to clear), and never touches the backend.
+ */
+function BudgetSettings() {
+  const [draft, setDraft] = useState('')
+  const [invalid, setInvalid] = useState(false)
+
+  useEffect(() => {
+    const budget = readBudgetUsd()
+    setDraft(budget === null ? '' : String(budget))
+  }, [])
+
+  const save = (): void => {
+    const trimmed = draft.trim()
+    if (trimmed === '') {
+      writeBudgetUsd(null)
+      setInvalid(false)
+      return
+    }
+    const value = Number(trimmed)
+    if (!Number.isFinite(value) || value <= 0) {
+      setInvalid(true)
+      return
+    }
+    writeBudgetUsd(value)
+    setInvalid(false)
+  }
+
+  const clear = (): void => {
+    writeBudgetUsd(null)
+    setDraft('')
+    setInvalid(false)
+  }
+
+  return (
+    <section>
+      <h3>Budget</h3>
+      <p>Block sends once this session's cost reaches the ceiling (USD).</p>
+      <label className='terminal-command-row'>
+        <span>Session budget (USD)</span>
+        <input
+          aria-label='Session budget in USD'
+          onChange={(event) => {
+            setDraft(event.target.value)
+            setInvalid(false)
+          }}
+          min='0'
+          placeholder='No budget'
+          step='0.01'
+          type='number'
+          value={draft}
+        />
+        {invalid && (
+          <small className='terminal-command-error'>
+            Enter a positive number, or leave empty to clear.
+          </small>
+        )}
+      </label>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={save} type='button'>Save</button>
+        <button onClick={clear} type='button'>Clear</button>
+      </div>
+    </section>
+  )
+}
+
+/**
+ * Pi and Livecraft manager processes from GET /api/processes (Fase 4.5).
+ * Self-contained: fetches when the Pi session tab mounts and offers a manual
+ * refresh. Degrades to a "not available" note when `ps` cannot run instead of
+ * breaking the tab.
+ */
+function ProcessesSettings() {
+  const [snapshot, setSnapshot] = useState<ProcessSnapshot | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  const refresh = () => {
+    setFailed(false)
+    setSnapshot(null)
+    void getProcesses()
+      .then(setSnapshot)
+      .catch(() => setFailed(true))
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    void getProcesses()
+      .then((result) => {
+        if (!cancelled) setSnapshot(result)
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  return (
+    <section>
+      <h3>Processes</h3>
+      <p>Pi and Livecraft manager processes detected on this machine.</p>
+      {failed && <p className='capability-empty'>Process monitoring is unavailable right now.</p>}
+      {!failed && !snapshot && <p className='capability-empty'>Loading…</p>}
+      {!failed && snapshot && !snapshot.available && (
+        <p className='capability-empty'>Process monitoring is not available on this platform.</p>
+      )}
+      {!failed && snapshot?.available && (
+        <>
+          <button onClick={refresh} type='button'>Refresh</button>
+          {snapshot.processes.length === 0
+            ? <p className='capability-empty'>No Pi or Livecraft manager processes found.</p>
+            : (
+              <div>
+                {snapshot.processes.map((process) => (
+                  <div
+                    key={process.pid}
+                    style={{
+                      borderBottom: '1px solid var(--line)',
+                      fontSize: 12,
+                      padding: '8px 0',
+                    }}
+                    title={process.args}
+                  >
+                    <div
+                      style={{
+                        alignItems: 'baseline',
+                        display: 'flex',
+                        gap: 12,
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <span style={{ color: 'var(--ink)' }}>
+                        {process.name}
+                        <small style={{ color: 'var(--muted)', marginLeft: 8 }}>
+                          PID {process.pid}
+                        </small>
+                      </span>
+                      <b style={{ color: 'var(--ink)', fontWeight: 600 }}>
+                        {(process.rssKb / 1024).toFixed(1)} MB
+                      </b>
+                    </div>
+                    <small
+                      style={{
+                        color: 'var(--muted)',
+                        display: 'block',
+                        marginTop: 2,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {process.args}
+                    </small>
+                  </div>
+                ))}
+              </div>
+            )}
+        </>
+      )}
+    </section>
+  )
+}
+
 // ── Main panel ─────────────────────────────────────────────────────
 
 /** Configures local shortcuts, terminal behavior, and editable color themes. */
@@ -551,6 +719,8 @@ export function SettingsPanel({
                 sessionSelected={sessionSelected}
               />
               <AboutSettings capabilities={capabilities} />
+              <ProcessesSettings />
+              <BudgetSettings />
             </TabPanel>
           )}
         </section>

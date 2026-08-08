@@ -20,6 +20,9 @@ type CoreCommandId =
   | 'previous-session'
   | 'toggle-conversation-view'
   | 'open-explorer'
+  | 'export-session'
+  | 'search-conversation'
+  | 'clone-session'
 export type WidgetCommandId = `open-widget-${RightWidget}`
 export type CommandId = CoreCommandId | WidgetCommandId
 
@@ -47,6 +50,9 @@ export const commandDefinitions: CommandDefinition[] = [
   { id: 'previous-session', label: 'Previous session' },
   { id: 'toggle-conversation-view', label: 'Toggle conversation view' },
   { id: 'open-explorer', label: 'Open folder in explorer' },
+  { id: 'export-session', label: 'Export session' },
+  { id: 'search-conversation', label: 'Search conversation' },
+  { id: 'clone-session', label: 'Clone session' },
   ...rightWidgetDefinitions.map(({ id, label }) => ({
     id: rightWidgetCommandId(id),
     label: `Open ${label}`,
@@ -73,6 +79,7 @@ export const defaultShortcuts: Partial<Record<CommandId, string>> = {
   'open-widget-git': 'alt+g',
   'open-widget-quotas': 'alt+q',
   'open-widget-todo': 'alt+y',
+  'open-widget-usage': 'alt+u',
 }
 
 /** Gives every sidebar widget a stable command without duplicating its identity. */

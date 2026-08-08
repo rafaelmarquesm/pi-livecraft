@@ -28,6 +28,32 @@
   width: 14px;
   height: 14px;
 }
+.message-fork-button {
+  padding: 0 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  line-height: 24px;
+  white-space: nowrap;
+  transition:
+    border-color 140ms ease-out,
+    color 140ms ease-out,
+    transform 100ms ease-out;
+}
+.message-fork-button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.message-fork-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.message-fork-button:active {
+  transform: scale(0.97);
+}
 .message:hover > .conversation-actions,
 .message:focus-within > .conversation-actions,
 .tool-call:hover > .conversation-actions,
@@ -83,6 +109,9 @@ pre.conversation-code-block {
 .message.user:has(> .message-actions) {
   padding-right: 48px;
 }
+.message.user:has(> .message-actions > .message-fork-button) {
+  padding-right: 132px;
+}
 .tool-call > .conversation-actions {
   top: 5px;
 }
@@ -95,6 +124,9 @@ pre.conversation-code-block {
 }
 @media (hover: hover) {
   .message.user:has(> .message-actions) {
+    padding-right: 16px;
+  }
+  .message.user:has(> .message-actions > .message-fork-button) {
     padding-right: 16px;
   }
 }

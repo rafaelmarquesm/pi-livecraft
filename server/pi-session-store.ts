@@ -23,6 +23,7 @@ interface PiSessionHeader {
   id: string
   timestamp: string
   cwd: string
+  parentSession?: string
 }
 
 const MAX_SESSIONS = 30
@@ -142,6 +143,7 @@ async function readPiSession(path: string, updatedAt: number): Promise<RecentSes
     name: name || prompt || 'New session',
     sessionPath: canonicalPath,
     updatedAt: lastMessageAt ?? (Number.isNaN(createdAt) ? updatedAt : createdAt),
+    ...(header.parentSession ? { parentSession: header.parentSession } : {}),
   }
 }
 
@@ -186,7 +188,13 @@ function parseHeader(line: string | undefined): PiSessionHeader | null {
     !value || value.type !== 'session' || typeof value.id !== 'string'
     || typeof value.timestamp !== 'string' || typeof value.cwd !== 'string'
   ) return null
-  return { type: 'session', id: value.id, timestamp: value.timestamp, cwd: value.cwd }
+  return {
+    type: 'session',
+    id: value.id,
+    timestamp: value.timestamp,
+    cwd: value.cwd,
+    parentSession: typeof value.parentSession === 'string' ? value.parentSession : undefined,
+  }
 }
 
 function parseLine(line: string | undefined): Record<string, unknown> | null {

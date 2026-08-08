@@ -549,6 +549,37 @@ async function sendCommand(request: ManagerRequest): Promise<JsonObject> {
   if (startsAgent) markSessionRunning(session)
   try {
     const response = await requestPi(session, request.command)
+    // Fork/clone/new_session/switch_session move Pi to a new session file
+    // whose header records parentSession. Keep the manager's summary in
+    // sync and broadcast the existing session_reassigned event so the
+    // backend clears its snapshot cache and the frontend refetches the new
+    // branch (Fase 3.1/3.2). The manager's own session id stays the same —
+    // only the sessionPath changes.
+    const switchesFile = ['fork', 'clone', 'new_session', 'switch_session']
+      .includes(request.command.type as string)
+    if (response.success !== false && switchesFile) {
+      try {
+        const state = await requestPi(session, { type: 'get_state' }, 5_000)
+        const file = isObject(state.data) && typeof state.data.sessionFile === 'string'
+          ? state.data.sessionFile
+          : undefined
+        if (file && file !== session.summary.sessionPath) {
+          session.summary.sessionPath = file
+          if (
+            isObject(state.data) && typeof state.data.sessionName === 'string'
+            && state.data.sessionName.trim()
+          ) session.summary.name = state.data.sessionName.trim()
+          broadcast({
+            kind: 'event',
+            event: 'session_reassigned',
+            sessionId: session.summary.id,
+          })
+        }
+      } catch {
+        // Soft-fail: the command itself succeeded; the follow-up state read
+        // is best-effort, so a failure here must not reject the response.
+      }
+    }
     if (!startsAgent && session.summary.status === 'idle' && session.pendingUi.size === 0)
       markSessionIdle(session, true)
     return response

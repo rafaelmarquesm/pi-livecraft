@@ -10,6 +10,8 @@ import type {
   PromptTemplate,
   QuotaSnapshot,
   RecentSession,
+  SessionMeta,
+  SessionMetaStore,
   SessionSnapshot,
   SessionSummary,
   TodoItem,
@@ -73,6 +75,29 @@ export async function restartManager(): Promise<void> {
 
 export async function listRecentSessions(cwd: string): Promise<RecentSession[]> {
   return request<RecentSession[]>(`/api/sessions/recent?cwd=${encodeURIComponent(cwd)}`)
+}
+
+export async function getSessionMeta(cwd: string): Promise<SessionMetaStore> {
+  const result = await request<{ cwd: string; meta: SessionMetaStore }>(
+    `/api/sessions/meta?cwd=${encodeURIComponent(cwd)}`,
+  )
+  return result.meta
+}
+
+/** Stores one session's metadata and returns the normalized saved value. */
+export async function putSessionMeta(
+  cwd: string,
+  sessionPath: string,
+  meta: SessionMeta,
+): Promise<SessionMeta> {
+  const result = await request<{ cwd: string; sessionPath: string; meta: SessionMeta }>(
+    '/api/sessions/meta',
+    {
+      method: 'PUT',
+      body: JSON.stringify({ cwd, sessionPath, meta }),
+    },
+  )
+  return result.meta
 }
 
 export async function exportSession(
@@ -313,6 +338,53 @@ export async function sendPiCommand(sessionId: string, command: JsonObject): Pro
     method: 'POST',
     body: JSON.stringify(command),
   })
+}
+
+/** One Pi/Livecraft process reported by the backend process monitor. */
+export interface ProcessInfo {
+  pid: number
+  rssKb: number
+  name: string
+  args: string
+}
+
+/** Result of GET /api/processes; `available` is false when `ps` cannot run (e.g. Windows). */
+export interface ProcessSnapshot {
+  available: boolean
+  processes: ProcessInfo[]
+}
+
+export async function getProcesses(): Promise<ProcessSnapshot> {
+  return request<ProcessSnapshot>('/api/processes')
+}
+
+/** Totals of a usage rollup, shared by the whole workspace and each bucket. */
+export interface UsageTotals {
+  cost: number
+  totalTokens: number
+  records: number
+}
+
+/** One UTC day of aggregated usage from GET /api/usage (most recent first). */
+export interface UsageDay extends UsageTotals {
+  day: string
+}
+
+/** Usage aggregated by model; records without a model bucket as 'unknown'. */
+export interface UsageModel extends UsageTotals {
+  model: string
+}
+
+/** Response of GET /api/usage?cwd=… — the workspace usage rollup served by the ledger. */
+export interface UsageSnapshot {
+  cwd: string
+  totals: UsageTotals
+  byDay: UsageDay[]
+  byModel: UsageModel[]
+}
+
+export async function getUsage(cwd: string): Promise<UsageSnapshot> {
+  return request<UsageSnapshot>(`/api/usage?cwd=${encodeURIComponent(cwd)}`)
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

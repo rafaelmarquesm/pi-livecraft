@@ -25,6 +25,7 @@ import type {
 } from '../session-analysis/session-analysis.ts'
 import { TodoWidget } from '../todo/TodoWidget.tsx'
 import { loadTodos } from '../todo/todo-cache.ts'
+import { UsageWidget } from '../usage/UsageWidget.tsx'
 import { maxRightSidebarWidth, minRightSidebarWidth, type RightWidget } from './right-sidebar.ts'
 import { WidgetLayout } from './WidgetLayout.tsx'
 
@@ -219,6 +220,7 @@ export function RightSidebar({
             {activeWidget === 'quotas' && (
               <QuotaWidget onRefresh={onQuotaRefresh} quotas={quotas} />
             )}
+            {activeWidget === 'usage' && <UsageWidget workspacePath={workspacePath} />}
             {activeWidget === 'todo' && (
               <TodoWidget
                 activeSessionId={activeSessionId}
@@ -289,6 +291,20 @@ export function RightSidebar({
             {quotaSummary?.stale && <small>!</small>}
           </button>
         </Tooltip>
+        <Tooltip label='Usage'>
+          <button
+            aria-controls={activeWidget === 'usage' ? 'usage-panel' : undefined}
+            aria-expanded={activeWidget === 'usage'}
+            aria-label={activeWidget === 'usage'
+              ? 'Collapse usage panel'
+              : 'Expand usage panel'}
+            className='rail-tab'
+            onClick={() => onWidgetSelect('usage')}
+            type='button'
+          >
+            <span aria-hidden='true'>$</span>
+          </button>
+        </Tooltip>
         <Tooltip label='Todo'>
           <button
             aria-controls={activeWidget === 'todo' ? 'todo-panel' : undefined}
@@ -331,5 +347,7 @@ function panelLabel(activeWidget: RightWidget | null): string {
     ? 'Workspace tasks'
     : activeWidget === 'quotas'
     ? 'Provider quotas'
+    : activeWidget === 'usage'
+    ? 'Usage'
     : 'Git information'
 }

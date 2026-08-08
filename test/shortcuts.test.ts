@@ -50,6 +50,7 @@ test('les nouvelles commandes de productivité sont reconnues par le registre', 
     'previous-session',
     'toggle-conversation-view',
     'open-explorer',
+    'export-session',
   ]
   for (const id of ids) {
     const definition = commandDefinitions.find((d) => d.id === id)

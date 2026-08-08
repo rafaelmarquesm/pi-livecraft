@@ -23,6 +23,7 @@ import { ActivityIndicator } from './ActivityIndicator.tsx'
 import { Markdown } from './Markdown.tsx'
 import { MessageCard, TurnUsage } from './MessageCard.tsx'
 import { isVisibleConversationMessage } from './message-display.ts'
+import { searchMessages, type SearchMatch } from './conversation-search.ts'
 import { ToolCallCard } from './ToolCallCard.tsx'
 import {
   conversationHistoryStart,
@@ -35,6 +36,7 @@ export function Conversation(
   {
     activity,
     agentName,
+    forkAvailable,
     messages,
     liveMessages,
     conversationView,
@@ -42,12 +44,15 @@ export function Conversation(
     pendingSteering,
     repositoryRoot,
     scrollToBottomRequest,
+    searchRequest,
     toolExecutions,
     workingDirectory,
     onError,
+    onForkMessage,
   }: {
     activity: Activity | null
     agentName?: string
+    forkAvailable?: boolean
     messages: SessionMessage[]
     liveMessages: LiveMessage[]
     conversationView: 'simple' | 'semi-detailed' | 'detailed'
@@ -55,9 +60,11 @@ export function Conversation(
     pendingSteering: string[]
     repositoryRoot?: string | null
     scrollToBottomRequest: number
+    searchRequest?: number
     toolExecutions: ToolExecution[]
     workingDirectory: string
     onError: (cause: unknown) => void
+    onForkMessage?: (entryId: string) => void
   },
 ) {
   const showToolCalls = conversationView !== 'simple'
@@ -142,6 +149,12 @@ export function Conversation(
   const navigationInProgressRef = useRef(false)
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const [highlightedTarget, setHighlightedTarget] = useState<string>()
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchIndex, setSearchIndex] = useState(0)
+  const [highlightedSearchKey, setHighlightedSearchKey] = useState<string>()
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const wasSearchOpenRef = useRef(false)
 
   /** Mounts older history in bounded batches after the recent conversation has painted. */
   useEffect(() => {
@@ -258,6 +271,104 @@ export function Conversation(
     }
   }, [navigationRequest, renderedHistoryStart])
 
+  const searchMatches = useMemo(
+    () => searchMessages(allMessages, searchQuery),
+    [allMessages, searchQuery],
+  )
+
+  /** Toggles the search bar each time the palette command fires. */
+  useEffect(() => {
+    if ((searchRequest ?? 0) > 0) setSearchOpen((open) => !open)
+  }, [searchRequest])
+
+  /** Focuses the input when opened and returns focus to the conversation when toggled closed. */
+  useEffect(() => {
+    const wasOpen = wasSearchOpenRef.current
+    wasSearchOpenRef.current = searchOpen
+    if (searchOpen) searchInputRef.current?.focus()
+    else if (wasOpen) conversationRef.current?.focus()
+  }, [searchOpen])
+
+  /** Restarts from the first match whenever the query changes. */
+  useEffect(() => {
+    setSearchIndex(0)
+  }, [searchQuery])
+
+  /** Keeps the cursor valid when the match list shrinks without a query edit. */
+  useEffect(() => {
+    setSearchIndex((current) =>
+      searchMatches.length === 0 ? 0 : Math.min(current, searchMatches.length - 1)
+    )
+  }, [searchMatches.length])
+
+  const activeSearchMatch = searchMatches.length > 0
+    ? searchMatches[Math.min(searchIndex, searchMatches.length - 1)]
+    : undefined
+
+  /** Scrolls to the current search match and flashes a temporary highlight. */
+  useEffect(() => {
+    if (!activeSearchMatch) return
+    if (renderedHistoryStart > 0) {
+      setHistoryStart(0)
+      return
+    }
+    const conversation = conversationRef.current
+    if (!conversation) return
+    const target = findSearchTarget(conversation, activeSearchMatch)
+    if (!target) return
+    const wrapper = target.closest<HTMLElement>('[data-message-index]') ?? target
+    const matchIndex = Number(wrapper.dataset.messageIndex)
+    const searchKey = allMessages[matchIndex]?.entryId ?? `history:${matchIndex}`
+    autoScrollRef.current = false
+    navigationInProgressRef.current = true
+    setShowScrollToBottom(true)
+    setHighlightedSearchKey(searchKey)
+    let cancelled = false
+    let finished = false
+    let highlightTimeout: number | undefined
+    let settleRaf: number | undefined
+    const finishSearchNavigation = () => {
+      if (cancelled || finished) return
+      finished = true
+      window.cancelAnimationFrame(settleRaf ?? 0)
+      conversation.removeEventListener('scrollend', finishSearchNavigation)
+      navigationInProgressRef.current = false
+      highlightTimeout = window.setTimeout(() => {
+        if (!cancelled) setHighlightedSearchKey(undefined)
+      }, 1500)
+    }
+    conversation.addEventListener('scrollend', finishSearchNavigation)
+    target.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'center',
+    })
+    // Fallback for browsers without scrollend: poll until position stabilizes.
+    let stableFrames = 0
+    let lastTop = conversation.scrollTop
+    const poll = () => {
+      if (cancelled || finished) return
+      if (conversation.scrollTop === lastTop) {
+        stableFrames += 1
+        if (stableFrames >= 3) {
+          finishSearchNavigation()
+          return
+        }
+      } else {
+        lastTop = conversation.scrollTop
+        stableFrames = 0
+      }
+      settleRaf = requestAnimationFrame(poll)
+    }
+    settleRaf = requestAnimationFrame(poll)
+    return () => {
+      cancelled = true
+      conversation.removeEventListener('scrollend', finishSearchNavigation)
+      window.cancelAnimationFrame(settleRaf ?? 0)
+      window.clearTimeout(highlightTimeout)
+      navigationInProgressRef.current = false
+    }
+  }, [activeSearchMatch, renderedHistoryStart])
+
   /** Tracks scrolling without mistaking layout-driven Markdown reflows for user input. */
   function handleConversationScroll(): void {
     const el = conversationRef.current
@@ -320,6 +431,38 @@ export function Conversation(
     conversation.scrollTo({ top: conversation.scrollHeight, behavior })
   }
 
+  /** Advances to the next match, wrapping around the end of the list. */
+  function goToNextMatch(): void {
+    if (searchMatches.length === 0) return
+    setSearchIndex((current) => (current + 1) % searchMatches.length)
+  }
+
+  /** Steps back to the previous match, wrapping around the start of the list. */
+  function goToPreviousMatch(): void {
+    if (searchMatches.length === 0) return
+    setSearchIndex((current) => (current - 1 + searchMatches.length) % searchMatches.length)
+  }
+
+  /** Closes the bar and returns focus to the conversation. */
+  function closeSearch(): void {
+    setSearchOpen(false)
+    conversationRef.current?.focus()
+  }
+
+  function handleSearchKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      closeSearch()
+      return
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      if (event.shiftKey) goToPreviousMatch()
+      else goToNextMatch()
+    }
+  }
+
   return (
     <section
       aria-live='polite'
@@ -334,24 +477,77 @@ export function Conversation(
       ref={conversationRef}
       tabIndex={0}
     >
+      {searchOpen && (
+        <div className='conversation-search'>
+          <input
+            aria-label='Search conversation'
+            className='conversation-search-input'
+            onChange={(event) => setSearchQuery(event.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            placeholder='Search conversation'
+            ref={searchInputRef}
+            type='search'
+            value={searchQuery}
+          />
+          <span className='conversation-search-count' role='status'>
+            {searchMatches.length > 0 ? `${searchIndex + 1}/${searchMatches.length}` : '0/0'}
+          </span>
+          <button
+            aria-label='Previous match'
+            className='conversation-search-nav'
+            disabled={searchMatches.length === 0}
+            onClick={goToPreviousMatch}
+            type='button'
+          >
+            ↑
+          </button>
+          <button
+            aria-label='Next match'
+            className='conversation-search-nav'
+            disabled={searchMatches.length === 0}
+            onClick={goToNextMatch}
+            type='button'
+          >
+            ↓
+          </button>
+          <button
+            aria-label='Close search'
+            className='conversation-search-close'
+            onClick={closeSearch}
+            type='button'
+          >
+            ×
+          </button>
+        </div>
+      )}
       <div className='conversation-content' ref={conversationContentRef}>
         {renderedMessageEntries.map((entry) => {
           const { message } = entry
           if (entry.source === 'history') {
             const index = entry.historyIndex
+            const entryId = allMessages[index]?.entryId
+            const searchKey = entryId ?? `history:${index}`
             const calls = showToolCalls ? toolCallsInMessage(message) : []
             const usage = usagesByMessage.get(index)
             if (!isVisibleConversationMessage(message) && calls.length === 0) return null
             return (
               <div
                 className={highlightedTarget === `message:${index}`
+                    || highlightedSearchKey === searchKey
                   ? 'conversation-target'
                   : undefined}
                 data-message-index={index}
                 key={entry.key}
               >
                 {isVisibleConversationMessage(message) && (
-                  <MessageCard message={message} onError={onError} />
+                  <MessageCard
+                    entryId={entryId}
+                    forkAvailable={forkAvailable}
+                    historyIndex={index}
+                    message={message}
+                    onError={onError}
+                    onForkMessage={onForkMessage}
+                  />
                 )}
                 {calls.map((call) => {
                   const execution = executionsByCallId.get(call.id)
@@ -508,4 +704,30 @@ export { ActivityIndicator } from './ActivityIndicator.tsx'
 
 function navigationTargetKey(target: SessionAnalysisTarget): string {
   return target.kind === 'tool' ? `tool:${target.id}` : `message:${target.index}`
+}
+
+/** Resolves a search match to a rendered element, landing on the nearest message when absent. */
+function findSearchTarget(conversation: HTMLElement, match: SearchMatch): HTMLElement | null {
+  if (match.entryId) {
+    const byEntry = conversation.querySelector<HTMLElement>(
+      `[data-entry-id="${CSS.escape(match.entryId)}"]`,
+    )
+    if (byEntry) return byEntry
+  }
+  const byHistory = conversation.querySelector<HTMLElement>(
+    `[data-history-index="${match.index}"]`,
+  )
+  if (byHistory) return byHistory
+  // toolResult and hidden matches have no card of their own; land on the closest rendered one.
+  let nearest: HTMLElement | null = null
+  let nearestDistance = Infinity
+  for (const element of conversation.querySelectorAll<HTMLElement>('[data-message-index]')) {
+    const candidate = Number(element.dataset.messageIndex)
+    const distance = Math.abs(candidate - match.index)
+    if (distance < nearestDistance) {
+      nearest = element
+      nearestDistance = distance
+    }
+  }
+  return nearest
 }

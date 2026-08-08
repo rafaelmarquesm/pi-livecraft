@@ -1,4 +1,4 @@
-import type { RecentSession, SessionSummary } from '../../../shared/types.ts'
+import type { RecentSession, SessionMetaStore, SessionSummary } from '../../../shared/types.ts'
 import { sessionIndicator } from './session-indicator.ts'
 
 export interface SessionActionTarget {
@@ -22,6 +22,75 @@ export function sidebarSessions(
   return [...pending, ...recentSessions]
     .filter(({ cwd }) => cwd === workspacePath)
     .sort((left, right) => right.updatedAt - left.updatedAt)
+}
+
+/** Orders sessions so pinned ones sort before unpinned, stable within each group. */
+export function pinFirst(sessions: RecentSession[], meta: SessionMetaStore): RecentSession[] {
+  return [
+    ...sessions.filter((session) => meta[session.sessionPath]?.pinned === true),
+    ...sessions.filter((session) => meta[session.sessionPath]?.pinned !== true),
+  ]
+}
+
+export interface SessionTree {
+  /** Sessions with no parent in the list (or on a parent cycle), in input order. */
+  roots: RecentSession[]
+  /** Children grouped by their parent's session path, in input order. */
+  childrenByParentPath: ReadonlyMap<string, readonly RecentSession[]>
+}
+
+/**
+ * Groups recent sessions into a parent/child tree using the `parentSession` header field.
+ * A session is a child only when its parent appears in the same list; orphans (a parent
+ * outside the list) render as roots. Sessions on a parent cycle (A→B→A) render as roots
+ * too, since no child can be its own ancestor.
+ */
+export function groupSessionChildren(sessions: RecentSession[]): SessionTree {
+  const byPath = new Map(sessions.map((session) => [session.sessionPath, session]))
+  // Only parent links that resolve to another listed session can make a child.
+  const parentPaths = new Map<string, string>()
+  for (const session of sessions) {
+    if (session.parentSession !== undefined && byPath.has(session.parentSession)) {
+      parentPaths.set(session.sessionPath, session.parentSession)
+    }
+  }
+  const cyclic = cyclicPaths(parentPaths)
+  const childrenByParentPath = new Map<string, RecentSession[]>()
+  const childPaths = new Set<string>()
+  for (const session of sessions) {
+    const parent = session.parentSession
+    if (parent === undefined || cyclic.has(session.sessionPath) || !byPath.has(parent)) continue
+    childPaths.add(session.sessionPath)
+    const siblings = childrenByParentPath.get(parent)
+    if (siblings) siblings.push(session)
+    else childrenByParentPath.set(parent, [session])
+  }
+  return {
+    roots: sessions.filter((session) => !childPaths.has(session.sessionPath)),
+    childrenByParentPath,
+  }
+}
+
+/** Session paths that sit on a parent loop (A→B→A); those sessions are treated as roots. */
+function cyclicPaths(parentPaths: ReadonlyMap<string, string>): Set<string> {
+  const visiting = new Set<string>()
+  const visited = new Set<string>()
+  const cyclic = new Set<string>()
+  const visit = (path: string, trail: string[]): void => {
+    if (visited.has(path)) return
+    if (visiting.has(path)) {
+      const start = trail.indexOf(path)
+      if (start >= 0) { for (const node of trail.slice(start)) cyclic.add(node) }
+      return
+    }
+    visiting.add(path)
+    const parent = parentPaths.get(path)
+    if (parent !== undefined) visit(parent, [...trail, path])
+    visiting.delete(path)
+    visited.add(path)
+  }
+  for (const path of parentPaths.keys()) visit(path, [])
+  return cyclic
 }
 
 /** Picks the next visible active session after closing the selected one. */

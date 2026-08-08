@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { RecentSession, SessionSummary } from '../shared/types.ts'
+import type { RecentSession, SessionMetaStore, SessionSummary } from '../shared/types.ts'
 import {
+  groupSessionChildren,
   otherWorkspaceSessions,
   pickSessionOnOpen,
+  pinFirst,
   sidebarSessions,
 } from '../src/features/workspace/sidebar-sessions.ts'
 
@@ -208,4 +210,176 @@ test('pickSessionOnOpen picks a starting session as active', () => {
   const active = [startingSession]
 
   assert.equal(pickSessionOnOpen(visible, active, new Set()), 'starting-1')
+})
+
+// -- groupSessionChildren ----------------------------------------------------
+
+const treeParent: RecentSession = {
+  id: 'tree-parent',
+  cwd: '/workspace',
+  name: 'Parent session',
+  sessionPath: '/sessions/parent.jsonl',
+  updatedAt: 300,
+}
+
+test('groupSessionChildren nests a child under its listed parent', () => {
+  const child: RecentSession = {
+    ...treeParent,
+    id: 'tree-child',
+    name: 'Child session',
+    sessionPath: '/sessions/child.jsonl',
+    updatedAt: 200,
+    parentSession: treeParent.sessionPath,
+  }
+
+  assert.deepEqual(groupSessionChildren([child, treeParent]), {
+    roots: [treeParent],
+    childrenByParentPath: new Map([[treeParent.sessionPath, [child]]]),
+  })
+})
+
+test('groupSessionChildren treats sessions whose parent is absent as roots', () => {
+  const orphan: RecentSession = {
+    ...treeParent,
+    id: 'tree-orphan',
+    name: 'Orphan session',
+    sessionPath: '/sessions/orphan.jsonl',
+    updatedAt: 200,
+    parentSession: '/sessions/missing.jsonl',
+  }
+
+  assert.deepEqual(groupSessionChildren([orphan, treeParent]), {
+    roots: [orphan, treeParent],
+    childrenByParentPath: new Map(),
+  })
+})
+
+test('groupSessionChildren breaks parent cycles by treating every member as a root', () => {
+  const first: RecentSession = {
+    ...treeParent,
+    id: 'tree-first',
+    sessionPath: '/sessions/first.jsonl',
+    updatedAt: 200,
+    parentSession: '/sessions/second.jsonl',
+  }
+  const second: RecentSession = {
+    ...treeParent,
+    id: 'tree-second',
+    sessionPath: '/sessions/second.jsonl',
+    updatedAt: 100,
+    parentSession: '/sessions/first.jsonl',
+  }
+
+  assert.deepEqual(groupSessionChildren([first, second]), {
+    roots: [first, second],
+    childrenByParentPath: new Map(),
+  })
+})
+
+test('groupSessionChildren groups multiple children under one parent in input order', () => {
+  const firstChild: RecentSession = {
+    ...treeParent,
+    id: 'tree-child-1',
+    name: 'Child 1',
+    sessionPath: '/sessions/child-1.jsonl',
+    updatedAt: 200,
+    parentSession: treeParent.sessionPath,
+  }
+  const secondChild: RecentSession = {
+    ...treeParent,
+    id: 'tree-child-2',
+    name: 'Child 2',
+    sessionPath: '/sessions/child-2.jsonl',
+    updatedAt: 100,
+    parentSession: treeParent.sessionPath,
+  }
+
+  assert.deepEqual(groupSessionChildren([firstChild, secondChild, treeParent]), {
+    roots: [treeParent],
+    childrenByParentPath: new Map([[treeParent.sessionPath, [firstChild, secondChild]]]),
+  })
+})
+
+// -- pinFirst ----------------------------------------------------------------
+
+test('pinFirst moves pinned sessions before unpinned ones', () => {
+  const pinned = {
+    ...persisted,
+    id: 'pinned-id',
+    sessionPath: '/sessions/pinned.jsonl',
+    updatedAt: 100,
+  }
+  const unpinned = {
+    ...persisted,
+    id: 'unpinned-id',
+    sessionPath: '/sessions/unpinned.jsonl',
+    updatedAt: 200,
+  }
+  const meta: SessionMetaStore = { '/sessions/pinned.jsonl': { pinned: true } }
+
+  assert.deepEqual(pinFirst([unpinned, pinned], meta), [pinned, unpinned])
+})
+
+test('pinFirst keeps relative order within pinned and unpinned groups', () => {
+  const first = {
+    ...persisted,
+    id: 'first-id',
+    sessionPath: '/sessions/first.jsonl',
+    updatedAt: 100,
+  }
+  const second = {
+    ...persisted,
+    id: 'second-id',
+    sessionPath: '/sessions/second.jsonl',
+    updatedAt: 200,
+  }
+  const third = {
+    ...persisted,
+    id: 'third-id',
+    sessionPath: '/sessions/third.jsonl',
+    updatedAt: 300,
+  }
+  const meta: SessionMetaStore = {
+    '/sessions/first.jsonl': { pinned: true },
+    '/sessions/third.jsonl': { pinned: true },
+  }
+
+  assert.deepEqual(pinFirst([first, second, third], meta), [first, third, second])
+})
+
+test('pinFirst leaves an empty metadata store untouched', () => {
+  const sessions = [persisted, { ...persisted, id: 'other', sessionPath: '/sessions/o.jsonl' }]
+
+  assert.deepEqual(pinFirst(sessions, {}), sessions)
+})
+
+test('pinFirst treats an explicit false pin like no pin', () => {
+  const session = { ...persisted, sessionPath: '/sessions/false.jsonl' }
+  const meta: SessionMetaStore = { '/sessions/false.jsonl': { pinned: false } }
+
+  assert.deepEqual(pinFirst([session], meta), [session])
+})
+
+test('pinFirst orders roots before groupSessionChildren without detaching children', () => {
+  const parent = { ...treeParent, updatedAt: 100 }
+  const child: RecentSession = {
+    ...treeParent,
+    id: 'tree-child',
+    name: 'Child session',
+    sessionPath: '/sessions/child.jsonl',
+    updatedAt: 200,
+    parentSession: treeParent.sessionPath,
+  }
+  const other = {
+    ...treeParent,
+    id: 'other-id',
+    sessionPath: '/sessions/other.jsonl',
+    updatedAt: 300,
+  }
+  const meta: SessionMetaStore = { [treeParent.sessionPath]: { pinned: true } }
+
+  assert.deepEqual(groupSessionChildren(pinFirst([other, child, parent], meta)), {
+    roots: [parent, other],
+    childrenByParentPath: new Map([[treeParent.sessionPath, [child]]]),
+  })
 })

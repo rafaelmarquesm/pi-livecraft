@@ -16,7 +16,22 @@ export interface RecentSession {
   name: string
   sessionPath: string
   updatedAt: number
+  /** Session path this session was forked or cloned from, when the header records it. */
+  parentSession?: string
 }
+
+/** Editable metadata attached to a session, keyed by its canonical session path (Fase 4.4). */
+export interface SessionMeta {
+  /** When true, the sidebar lists the session before unpinned ones. */
+  pinned?: boolean
+  /** Free-form labels, at most 8 entries of up to 40 characters each. */
+  tags?: string[]
+  /** Free-form note of at most 2000 characters. */
+  note?: string
+}
+
+/** Global session metadata keyed by canonical session path (survives fork/clone). */
+export type SessionMetaStore = Record<string, SessionMeta>
 
 export interface DirectoryEntry {
   name: string

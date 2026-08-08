@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -9,11 +10,18 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { Tooltip } from '../../components/Tooltip.tsx'
-import type { RecentSession, SessionSummary } from '../../../shared/types.ts'
+import type {
+  RecentSession,
+  SessionMeta,
+  SessionMetaStore,
+  SessionSummary,
+} from '../../../shared/types.ts'
 import { sessionIndicator } from './session-indicator.ts'
 import { SessionStatusIndicator } from './SessionStatusIndicator.tsx'
 import {
+  groupSessionChildren,
   otherWorkspaceSessions,
+  pinFirst,
   sidebarSessions,
   type SessionActionTarget,
 } from './sidebar-sessions.ts'
@@ -47,6 +55,8 @@ interface WorkspaceSidebarProps {
   onRenameSession: (target: SessionActionTarget, name: string) => Promise<void>
   onResize: (width: number) => void
   onToggleCollapsed: () => void
+  sessionMeta: SessionMetaStore
+  onUpdateSessionMeta: (sessionPath: string, meta: SessionMeta) => Promise<void>
   onError: (cause: unknown) => void
 }
 
@@ -72,19 +82,32 @@ export function WorkspaceSidebar({
   onRenameSession,
   onResize,
   onToggleCollapsed,
+  sessionMeta,
+  onUpdateSessionMeta,
   onError,
 }: WorkspaceSidebarProps) {
   const [openingSessionPath, setOpeningSessionPath] = useState('')
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [contextMenuPosition, setContextMenuPosition] = useState({ left: 0, top: 0 })
   const [renameTarget, setRenameTarget] = useState<SessionActionTarget | null>(null)
+  const [metaEdit, setMetaEdit] = useState<
+    { target: SessionActionTarget; field: 'tags' | 'note'; x: number; y: number } | null
+  >(null)
+  const [metaEditText, setMetaEditText] = useState('')
   const selectedSessionRef = useRef<HTMLButtonElement>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
   const contextMenuTriggerRef = useRef<HTMLButtonElement>(null)
+  const metaEditRef = useRef<HTMLDivElement>(null)
   const visibleSessions = useMemo(
     () => sidebarSessions(recentSessions, workspacePath, sentSessions),
     [recentSessions, sentSessions, workspacePath],
   )
+  // Pins reorder the input list; groupSessionChildren preserves that order for roots.
+  const pinnedSessions = useMemo(() => pinFirst(visibleSessions, sessionMeta), [
+    sessionMeta,
+    visibleSessions,
+  ])
+  const sessionTree = useMemo(() => groupSessionChildren(pinnedSessions), [pinnedSessions])
   const otherSessions = useMemo(
     () =>
       otherWorkspaceSessions(sessions, workspacePath, compactingSessionIds, completedSessionIds),
@@ -129,6 +152,26 @@ export function WorkspaceSidebar({
       document.removeEventListener('keydown', dismissOnKeyDown)
     }
   }, [contextMenu])
+
+  useEffect(() => {
+    if (!metaEdit) return
+    const dismissOnPointerDown = (event: PointerEvent): void => {
+      if (!(event.target instanceof Node) || !metaEditRef.current?.contains(event.target)) {
+        setMetaEdit(null)
+      }
+    }
+    const dismissOnKeyDown = (event: globalThis.KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      setMetaEdit(null)
+    }
+    document.addEventListener('pointerdown', dismissOnPointerDown)
+    document.addEventListener('keydown', dismissOnKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', dismissOnPointerDown)
+      document.removeEventListener('keydown', dismissOnKeyDown)
+    }
+  }, [metaEdit])
 
   function dismissContextMenu(): void {
     setContextMenu(null)
@@ -178,6 +221,52 @@ export function WorkspaceSidebar({
     }
   }
 
+  /** Toggles the pinned flag of the context-menu session through the App-owned store. */
+  async function togglePinned(): Promise<void> {
+    const sessionPath = contextMenu?.target.sessionPath
+    if (!sessionPath) return
+    dismissContextMenu()
+    try {
+      const current = sessionMeta[sessionPath] ?? {}
+      await onUpdateSessionMeta(sessionPath, { ...current, pinned: !current.pinned })
+    } catch (cause) {
+      onError(cause)
+    }
+  }
+
+  /** Opens the tags/note editor for the context-menu session at the menu position. */
+  function startMetaEdit(field: 'tags' | 'note'): void {
+    if (!contextMenu) return
+    const { target } = contextMenu
+    const current = target.sessionPath ? sessionMeta[target.sessionPath] : undefined
+    setMetaEditText(field === 'tags' ? (current?.tags ?? []).join(', ') : current?.note ?? '')
+    setMetaEdit({ target, field, x: contextMenuPosition.left, y: contextMenuPosition.top })
+    setContextMenu(null)
+  }
+
+  function cancelMetaEdit(): void {
+    setMetaEdit(null)
+    contextMenuTriggerRef.current?.focus()
+  }
+
+  /** Saves the edited tags or note through the App-owned store. */
+  async function saveMetaEdit(): Promise<void> {
+    if (!metaEdit) return
+    const { target, field } = metaEdit
+    const sessionPath = target.sessionPath
+    setMetaEdit(null)
+    if (!sessionPath) return
+    try {
+      const current = sessionMeta[sessionPath] ?? {}
+      const next: SessionMeta = field === 'tags'
+        ? { ...current, tags: parseTags(metaEditText) }
+        : { ...current, note: metaEditText }
+      await onUpdateSessionMeta(sessionPath, next)
+    } catch (cause) {
+      onError(cause)
+    }
+  }
+
   function startResize(event: ReactPointerEvent<HTMLDivElement>): void {
     const handle = event.currentTarget
     const initialX = event.clientX
@@ -213,6 +302,64 @@ export function WorkspaceSidebar({
       event.preventDefault()
       onResize(maxWorkspaceSidebarWidth)
     }
+  }
+
+  function renderSessionRow(recentSession: RecentSession, child = false) {
+    const activeSession = sessions.find((session) =>
+      session.sessionPath === recentSession.sessionPath && session.status !== 'exited'
+    )
+    const indicator = sessionIndicator(
+      activeSession,
+      selectedId,
+      compactingSessionIds,
+      completedSessionIds,
+    )
+    const sessionLabel = openingSessionPath === recentSession.sessionPath
+      ? 'Opening…'
+      : recentSession.name
+    const actionTarget: SessionActionTarget = {
+      cwd: recentSession.cwd,
+      name: recentSession.name,
+      sessionId: activeSession?.id,
+      sessionPath: recentSession.sessionPath,
+    }
+    return (
+      <Tooltip
+        hint='Right-click to rename or close the session'
+        label={`${recentSession.name}\n${
+          new Date(recentSession.updatedAt).toLocaleString('en-US')
+        }`}
+      >
+        <button
+          aria-haspopup='menu'
+          className={`session-item${child ? ' session-child' : ''}${
+            activeSession?.id === selectedId ? ' selected' : ''
+          }${indicator ? ` ${indicator}` : ''}${
+            sessionMeta[recentSession.sessionPath]?.pinned ? ' pinned' : ''
+          }`}
+          disabled={openingSessionPath === recentSession.sessionPath}
+          onContextMenu={(event) => openContextMenu(actionTarget, event)}
+          onKeyDown={(event) => openContextMenuFromKeyboard(actionTarget, event)}
+          onClick={() => {
+            if (activeSession) {
+              onSelectSession(activeSession.id)
+              return
+            }
+            setOpeningSessionPath(recentSession.sessionPath)
+            void onOpenSession(recentSession).catch(onError).finally(() =>
+              setOpeningSessionPath('')
+            )
+          }}
+          ref={activeSession?.id === selectedId ? selectedSessionRef : undefined}
+          type='button'
+        >
+          {indicator && <SessionStatusIndicator status={indicator} />}
+          <span>
+            <strong>{sessionLabel}</strong>
+          </span>
+        </button>
+      </Tooltip>
+    )
   }
 
   return (
@@ -295,60 +442,13 @@ export function WorkspaceSidebar({
         {isRefreshing && visibleSessions.length === 0 && (
           <p className='session-list-loading' role='status'>Loading sessions…</p>
         )}
-        {visibleSessions.map((recentSession) => {
-          const activeSession = sessions.find((session) =>
-            session.sessionPath === recentSession.sessionPath && session.status !== 'exited'
-          )
-          const indicator = sessionIndicator(
-            activeSession,
-            selectedId,
-            compactingSessionIds,
-            completedSessionIds,
-          )
-          const sessionLabel = openingSessionPath === recentSession.sessionPath
-            ? 'Opening…'
-            : recentSession.name
-          const actionTarget: SessionActionTarget = {
-            cwd: recentSession.cwd,
-            name: recentSession.name,
-            sessionId: activeSession?.id,
-            sessionPath: recentSession.sessionPath,
-          }
+        {sessionTree.roots.map((recentSession) => {
+          const children = sessionTree.childrenByParentPath.get(recentSession.sessionPath) ?? []
           return (
-            <Tooltip
-              key={recentSession.sessionPath}
-              hint='Right-click to rename or close the session'
-              label={`${recentSession.name}\n${
-                new Date(recentSession.updatedAt).toLocaleString('en-US')
-              }`}
-            >
-              <button
-                className={`session-item${activeSession?.id === selectedId ? ' selected' : ''}${
-                  indicator ? ` ${indicator}` : ''
-                }`}
-                aria-haspopup='menu'
-                disabled={openingSessionPath === recentSession.sessionPath}
-                onContextMenu={(event) => openContextMenu(actionTarget, event)}
-                onKeyDown={(event) => openContextMenuFromKeyboard(actionTarget, event)}
-                onClick={() => {
-                  if (activeSession) {
-                    onSelectSession(activeSession.id)
-                    return
-                  }
-                  setOpeningSessionPath(recentSession.sessionPath)
-                  void onOpenSession(recentSession).catch(onError).finally(() =>
-                    setOpeningSessionPath('')
-                  )
-                }}
-                ref={activeSession?.id === selectedId ? selectedSessionRef : undefined}
-                type='button'
-              >
-                {indicator && <SessionStatusIndicator status={indicator} />}
-                <span>
-                  <strong>{sessionLabel}</strong>
-                </span>
-              </button>
-            </Tooltip>
+            <Fragment key={recentSession.sessionPath}>
+              {renderSessionRow(recentSession)}
+              {children.map((child) => renderSessionRow(child, true))}
+            </Fragment>
           )
         })}
         {visibleSessions.length === 0 && !isRefreshing && (
@@ -413,6 +513,28 @@ export function WorkspaceSidebar({
           <button autoFocus onClick={startRename} role='menuitem' type='button'>
             Rename…
           </button>
+          {contextMenu.target.sessionPath && (
+            <button onClick={() => void togglePinned()} role='menuitem' type='button'>
+              {sessionMeta[
+                  contextMenu
+                    .target
+                    .sessionPath
+                ]
+                  ?.pinned
+                ? 'Unpin'
+                : 'Pin'}
+            </button>
+          )}
+          {contextMenu.target.sessionPath && (
+            <button onClick={() => startMetaEdit('tags')} role='menuitem' type='button'>
+              Edit tags…
+            </button>
+          )}
+          {contextMenu.target.sessionPath && (
+            <button onClick={() => startMetaEdit('note')} role='menuitem' type='button'>
+              Edit note…
+            </button>
+          )}
           {contextMenu.target.sessionId && (
             <button
               className='danger'
@@ -425,6 +547,54 @@ export function WorkspaceSidebar({
           )}
         </div>
       )}
+      {metaEdit && (
+        <div
+          aria-label={metaEdit.field === 'tags' ? 'Edit session tags' : 'Edit session note'}
+          className='session-context-menu session-meta-editor'
+          ref={metaEditRef}
+          role='dialog'
+          style={{ left: metaEdit.x, top: metaEdit.y }}
+        >
+          <label className='session-meta-label' htmlFor='session-meta-input'>
+            {metaEdit.field === 'tags' ? 'Tags (comma separated)' : 'Note'}
+          </label>
+          {metaEdit.field === 'tags'
+            ? (
+              <input
+                autoFocus
+                className='session-meta-input'
+                id='session-meta-input'
+                onChange={(event) => setMetaEditText(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    void saveMetaEdit()
+                  }
+                }}
+                type='text'
+                value={metaEditText}
+              />
+            )
+            : (
+              <textarea
+                autoFocus
+                className='session-meta-input'
+                id='session-meta-input'
+                onChange={(event) => setMetaEditText(event.target.value)}
+                rows={4}
+                value={metaEditText}
+              />
+            )}
+          <div className='session-meta-actions'>
+            <button onClick={() => void saveMetaEdit()} type='button'>
+              Save
+            </button>
+            <button onClick={cancelMetaEdit} type='button'>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       {renameTarget && (
         <SessionRenameDialog
           initialName={renameTarget.name}
@@ -435,6 +605,14 @@ export function WorkspaceSidebar({
       )}
     </aside>
   )
+}
+
+/** Splits comma-separated tag input, trimming and dropping empty entries. */
+function parseTags(input: string): string[] {
+  return input
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter((tag) => tag.length > 0)
 }
 
 /** Prevents duplicate session creation and reports errors to the container. */

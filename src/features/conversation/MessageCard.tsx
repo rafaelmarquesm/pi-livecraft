@@ -9,22 +9,45 @@ import { formatTokens, formatTurnCost, type MessageUsage } from './message-usage
 /** Renders a visible protocol message with the default or custom presentation. */
 export const MessageCard = memo(
   function MessageCard(
-    { message, onError }: {
+    { entryId, forkAvailable, historyIndex, message, onError, onForkMessage }: {
+      entryId?: string
+      forkAvailable?: boolean
+      historyIndex?: number
       message: JsonObject
       onError: (cause: unknown) => void
+      onForkMessage?: (entryId: string) => void
     },
   ) {
     if (message.role === 'custom' && typeof message.customType === 'string')
-      return <DefaultCustomMessage message={message} />
-    return <DefaultMessageCard message={message} onError={onError} />
+      return (
+        <DefaultCustomMessage
+          entryId={entryId}
+          historyIndex={historyIndex}
+          message={message}
+        />
+      )
+    return (
+      <DefaultMessageCard
+        entryId={entryId}
+        forkAvailable={forkAvailable}
+        historyIndex={historyIndex}
+        message={message}
+        onError={onError}
+        onForkMessage={onForkMessage}
+      />
+    )
   },
 )
 
 const DefaultMessageCard = memo(
   function DefaultMessageCard(
-    { message, onError }: {
+    { entryId, forkAvailable, historyIndex, message, onError, onForkMessage }: {
+      entryId?: string
+      forkAvailable?: boolean
+      historyIndex?: number
       message: JsonObject
       onError: (cause: unknown) => void
+      onForkMessage?: (entryId: string) => void
     },
   ) {
     const role = String(message.role)
@@ -32,10 +55,23 @@ const DefaultMessageCard = memo(
     const time = timestamp && !Number.isNaN(timestamp.getTime()) ? timestamp : null
     const text = visibleText(message.content ?? message.output)
     return (
-      <article className={`message ${role}`}>
+      <article
+        className={`message ${role}`}
+        data-entry-id={entryId ?? undefined}
+        data-history-index={entryId === undefined ? historyIndex : undefined}
+      >
         {text && (
           <div className='conversation-actions message-actions'>
             <CopyButton label='Copy message' onError={onError} value={text} />
+            {role === 'user' && entryId !== undefined && forkAvailable === true && (
+              <button
+                className='message-fork-button'
+                onClick={() => onForkMessage?.(entryId)}
+                type='button'
+              >
+                Fork from here
+              </button>
+            )}
           </div>
         )}
         <div className='content'>
@@ -55,12 +91,22 @@ const DefaultMessageCard = memo(
 )
 
 /** Renders an unknown custom message without interpreting extension-specific details. */
-function DefaultCustomMessage({ message }: { message: JsonObject & { customType?: unknown } }) {
+function DefaultCustomMessage(
+  { entryId, historyIndex, message }: {
+    entryId?: string
+    historyIndex?: number
+    message: JsonObject & { customType?: unknown }
+  },
+) {
   const content = hasVisibleContent(message.content)
     ? renderContent(message.content, message.role)
     : <p>Message has no displayable content.</p>
   return (
-    <article className='message custom-message'>
+    <article
+      className='message custom-message'
+      data-entry-id={entryId ?? undefined}
+      data-history-index={entryId === undefined ? historyIndex : undefined}
+    >
       <code className='custom-message-type'>{String(message.customType)}</code>
       <div className='content'>{content}</div>
     </article>

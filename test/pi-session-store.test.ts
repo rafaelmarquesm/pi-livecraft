@@ -161,6 +161,64 @@ test('reads the newest entry of a large session file even when it exceeds one ta
   assert.equal(recent[0].updatedAt, Date.parse('2026-07-19T11:00:00.000Z'))
 })
 
+test('reads parentSession from the session header when present', async () => {
+  const { directory, workspace } = await fixture()
+  // mkdtemp lives under /var/folders, which realpaths to /private/var/folders on macOS;
+  // listRecentPiSessions only returns sessions whose canonical cwd matches the request.
+  const canonicalWorkspace = await realpath(workspace)
+  const parentPath = join(directory, 'original.jsonl')
+  await writeFile(
+    join(directory, 'forked.jsonl'),
+    [
+      JSON.stringify({
+        type: 'session',
+        version: 3,
+        id: 'forked',
+        timestamp: '2026-07-19T10:00:00.000Z',
+        cwd: canonicalWorkspace,
+        parentSession: parentPath,
+      }),
+      JSON.stringify({ type: 'session_info', name: 'Forked session' }),
+      JSON.stringify({
+        type: 'message',
+        timestamp: '2026-07-19T10:00:00.000Z',
+        message: { role: 'user', content: 'forked prompt' },
+      }),
+    ]
+      .join('\n'),
+  )
+  const recent = await listRecentPiSessions(canonicalWorkspace, directory)
+  assert.equal(recent.length, 1)
+  assert.equal(recent[0].parentSession, parentPath)
+})
+
+test('omits parentSession when the session header does not record one', async () => {
+  const { directory, workspace } = await fixture()
+  const canonicalWorkspace = await realpath(workspace)
+  await writeFile(
+    join(directory, 'plain.jsonl'),
+    [
+      JSON.stringify({
+        type: 'session',
+        version: 3,
+        id: 'plain',
+        timestamp: '2026-07-19T10:00:00.000Z',
+        cwd: canonicalWorkspace,
+      }),
+      JSON.stringify({ type: 'session_info', name: 'Plain session' }),
+      JSON.stringify({
+        type: 'message',
+        timestamp: '2026-07-19T10:00:00.000Z',
+        message: { role: 'user', content: 'plain prompt' },
+      }),
+    ]
+      .join('\n'),
+  )
+  const recent = await listRecentPiSessions(canonicalWorkspace, directory)
+  assert.equal(recent.length, 1)
+  assert.equal('parentSession' in recent[0], false)
+})
+
 async function writeSession(
   path: string,
   cwd: string,

@@ -23,6 +23,7 @@ import {
   parseTodoItems,
   saveWorkspaceTodos,
 } from './features/todos/todo-store.ts'
+import { rollupUsageRecords, UsageLedger } from './features/usage/usage-ledger.ts'
 import {
   readWorkspaceFile,
   resolveWorkspaceFilePath,
@@ -40,7 +41,13 @@ import {
   readSessionJsonl,
 } from './features/export/session-export.ts'
 import { sessionToMarkdown } from './features/export/session-markdown.ts'
-import type { SessionSummary } from '../shared/types.ts'
+import { readProcesses } from './features/process-monitor.ts'
+import {
+  loadSessionMeta,
+  saveSessionMeta,
+  validateSessionMeta,
+} from './features/sessions/session-meta-store.ts'
+import type { SessionMeta, SessionSummary } from '../shared/types.ts'
 import { capabilitiesFromCommands, detectPiVersion } from './pi-capabilities.ts'
 import { externalWorkspacePath, openPath } from './system-integration.ts'
 import { expandHomePath } from './home-path.ts'
@@ -62,6 +69,7 @@ let piEventSequence = 0
 const distDirectory = fileURLToPath(new URL('../dist/', import.meta.url))
 const quotas = new QuotaService(manager)
 const caches = new SnapshotCaches()
+const usageLedger = new UsageLedger()
 const managerRuntime = new ManagerRuntimeMonitor(manager, (status) => {
   broadcast({ kind: 'event', event: 'manager_status', sessionId: '', data: status })
 })
@@ -71,6 +79,7 @@ manager.on('event', (event: ManagerEvent) => {
   if (event.event === 'session_exited' || event.event === 'session_reassigned') {
     liveSessionEvents.delete(event.sessionId)
     caches.clear(event.sessionId)
+    sessionWorkspaces.delete(event.sessionId)
   }
   if (event.event === 'pi' && isObject(event.data)) {
     const sequence = ++piEventSequence
@@ -78,8 +87,15 @@ manager.on('event', (event: ManagerEvent) => {
     liveSessionEvents.set(event.sessionId, live)
     live.receive(event.data, sequence)
     broadcast({ ...event, sequence })
-    if (event.data.type === 'message_end' || event.data.type === 'agent_settled') {
+    if (event.data.type === 'message_end') {
       void caches.refreshStateStats(manager, event.sessionId).catch(() => undefined)
+    } else if (event.data.type === 'agent_settled') {
+      // Same state/stats refresh as above plus an entries pass, so the usage
+      // ledger can be fed from the freshest snapshot cache entries (Fase 4.1).
+      void caches
+        .refresh(manager, event.sessionId, { stateStats: true })
+        .then((cache) => feedUsageLedger(event.sessionId, cache.entries))
+        .catch(() => undefined)
     }
     return
   }
@@ -94,6 +110,29 @@ manager.on('disconnected', () => {
   managerRuntime.disconnected()
   broadcast({ kind: 'event', event: 'manager_disconnected', sessionId: '' })
 })
+
+/** Workspace memo per session, so the usage ledger feed avoids a manager list round-trip. */
+const sessionWorkspaces = new Map<string, string>()
+
+/** Feeds the usage ledger from snapshot cache entries once a session settles. */
+async function feedUsageLedger(sessionId: string, entries: JsonObject[]): Promise<void> {
+  let cwd = sessionWorkspaces.get(sessionId)
+  if (cwd === undefined) {
+    const sessions = await manager.request({ action: 'list' })
+    if (Array.isArray(sessions)) {
+      const summary = sessions.find((candidate) =>
+        isObject(candidate) && candidate.id === sessionId
+      )
+      if (isObject(summary) && typeof summary.cwd === 'string') {
+        cwd = summary.cwd
+        sessionWorkspaces.set(sessionId, cwd)
+      }
+    }
+  }
+  if (cwd === undefined) return
+  await usageLedger.append(sessionId, cwd, entries)
+}
+
 managerRuntime.start()
 manager.start()
 
@@ -182,6 +221,11 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
     return
   }
 
+  if (method === 'GET' && url.pathname === '/api/processes') {
+    sendJson(response, 200, await readProcesses())
+    return
+  }
+
   if (method === 'POST' && url.pathname === '/api/quotas/refresh') {
     const body = await readJsonBody(request)
     if (typeof body.sessionId !== 'string' || !body.sessionId)
@@ -190,9 +234,43 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
     return
   }
 
+  if (method === 'GET' && url.pathname === '/api/usage') {
+    const cwd = await resolveWorkingDirectory(url.searchParams.get('cwd') ?? '~/.pi')
+    sendJson(response, 200, rollupUsageRecords(await usageLedger.load(), cwd))
+    return
+  }
+
   if (method === 'GET' && url.pathname === '/api/sessions/recent') {
     const cwd = await resolveWorkingDirectory(url.searchParams.get('cwd') ?? '~/.pi')
     sendJson(response, 200, await listRecentPiSessions(cwd))
+    return
+  }
+
+  // Session metadata (pin/tags/note) is global and keyed by canonical session
+  // path, so it survives fork/clone; `cwd` is resolved only for display.
+  if (method === 'GET' && url.pathname === '/api/sessions/meta') {
+    const cwd = await resolveWorkingDirectory(url.searchParams.get('cwd') ?? '~/.pi')
+    sendJson(response, 200, { cwd, meta: await loadSessionMeta() })
+    return
+  }
+
+  if (method === 'PUT' && url.pathname === '/api/sessions/meta') {
+    const body = await readJsonBody(request)
+    if (typeof body.cwd !== 'string') throw new HttpError(400, 'Working directory is required')
+    if (typeof body.sessionPath !== 'string' || !body.sessionPath.trim())
+      throw new HttpError(400, 'Session path is required')
+    const cwd = await resolveWorkingDirectory(body.cwd)
+    let meta: SessionMeta
+    try {
+      meta = validateSessionMeta(body.meta)
+    } catch (error) {
+      throw new HttpError(400, errorMessage(error))
+    }
+    sendJson(response, 200, {
+      cwd,
+      sessionPath: body.sessionPath,
+      meta: await saveSessionMeta(body.sessionPath, meta),
+    })
     return
   }
 

@@ -118,14 +118,16 @@ test(
   },
 )
 
-test('T-RPC-2 fork forks a user message and keeps the session', { timeout: 60_000 }, async (t) => {
+test('T-RPC-2 fork moves the session to a new session file', { timeout: 60_000 }, async (t) => {
   const directory = createSessionDir()
   const sessionPath = writeCraftedSession(directory)
   const pi = sessionRpc(directory, sessionPath)
   try {
-    // Discovery: an offline prompt creates entries but never persists the
-    // session (no assistant response), so fork would reject it as unsaved.
-    // Fall back to the crafted, saved session JSONL.
+    // Empirically verified on pi 0.84.1: an offline prompt creates entries
+    // but never persists the session, and fork on such a session fails with
+    // "This session has not been saved yet. Wait for the first assistant
+    // response before cloning or forking it." The crafted, saved session
+    // JSONL below is the persisted-session path fork requires.
     const forkMessages = await pi.request({ type: 'get_fork_messages' })
     if (
       !forkMessages.success || !isObject(forkMessages.data)
@@ -138,6 +140,9 @@ test('T-RPC-2 fork forks a user message and keeps the session', { timeout: 60_00
     assert.equal(typeof first.entryId, 'string')
 
     const stateBefore = await pi.request({ type: 'get_state' })
+    const sessionFileBefore = isObject(stateBefore.data) ? stateBefore.data.sessionFile : undefined
+    assert.equal(typeof sessionFileBefore, 'string')
+
     const fork = await pi.request({ type: 'fork', entryId: first.entryId })
     if (!fork.success) {
       t.skip(`fork failed in offline mode: ${String(fork.error)}`)
@@ -149,15 +154,26 @@ test('T-RPC-2 fork forks a user message and keeps the session', { timeout: 60_00
     assert.equal(typeof fork.data.cancelled, 'boolean')
 
     const stateAfter = await pi.request({ type: 'get_state' })
-    const sessionIdBefore = isObject(stateBefore.data) ? stateBefore.data.sessionId : undefined
-    const sessionIdAfter = isObject(stateAfter.data) ? stateAfter.data.sessionId : undefined
-    if (sessionIdBefore !== sessionIdAfter) {
-      t.skip(
-        `pi ${getPiVersion()} fork creates a new session id/file (createBranchedSession) instead of forking within the same session; documented contract expects get_state.sessionId to stay unchanged`,
+    const sessionFileAfter = isObject(stateAfter.data) ? stateAfter.data.sessionFile : undefined
+    assert.equal(typeof sessionFileAfter, 'string')
+    // The manager (Livecraft) session id stays the same after a fork; on the
+    // Pi side the runtime moves to a brand-new session file (verified on
+    // pi 0.84.1: get_state.sessionFile changes, get_state.sessionId may too).
+    assert.notEqual(sessionFileAfter, sessionFileBefore, 'fork moves Pi to a new session file')
+    // The branch file header records parentSession, but offline mode only
+    // writes a session file after the first assistant response (which never
+    // happens), so the file is not persisted here; the fake-Pi manager test
+    // covers the hook's session_reassigned broadcast and sessionPath update.
+    if (existsSync(sessionFileAfter as string)) {
+      const header = JSON.parse(
+        readFileSync(sessionFileAfter as string, 'utf8').split('\n')[0],
+      ) as JsonObject
+      assert.equal(header.parentSession, sessionFileBefore)
+    } else {
+      t.diagnostic(
+        `pi ${getPiVersion()} offline fork did not persist the branch file; parentSession header verified by the clone test and the manager-fork integration test`,
       )
-      return
     }
-    assert.equal(sessionIdAfter, sessionIdBefore)
   } finally {
     await cleanup(directory, pi)
   }
@@ -172,6 +188,11 @@ test(
     const pi = sessionRpc(directory, sessionPath)
     try {
       const stateBefore = await pi.request({ type: 'get_state' })
+      const sessionFileBefore = isObject(stateBefore.data)
+        ? stateBefore.data.sessionFile
+        : undefined
+      assert.equal(typeof sessionFileBefore, 'string')
+
       const clone = await pi.request({ type: 'clone' })
       if (!clone.success) {
         t.skip(`clone failed in offline mode: ${String(clone.error)}`)
@@ -181,14 +202,18 @@ test(
       assert.equal(typeof clone.data.cancelled, 'boolean')
 
       const stateAfter = await pi.request({ type: 'get_state' })
-      const sessionFileBefore = isObject(stateBefore.data)
-        ? stateBefore.data.sessionFile
-        : undefined
       const sessionFileAfter = isObject(stateAfter.data) ? stateAfter.data.sessionFile : undefined
-      assert.equal(typeof sessionFileBefore, 'string')
       assert.equal(typeof sessionFileAfter, 'string')
       // E4: clients discover the clone destination because the session file changes.
       assert.notEqual(sessionFileAfter, sessionFileBefore)
+      // The clone persists its new session file immediately and the header
+      // records the pre-clone session file as parentSession (verified on
+      // pi 0.84.1 offline).
+      assert.equal(existsSync(sessionFileAfter as string), true, 'clone writes the branch file')
+      const header = JSON.parse(
+        readFileSync(sessionFileAfter as string, 'utf8').split('\n')[0],
+      ) as JsonObject
+      assert.equal(header.parentSession, sessionFileBefore)
     } finally {
       await cleanup(directory, pi)
     }
