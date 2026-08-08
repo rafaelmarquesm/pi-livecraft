@@ -20,6 +20,8 @@
     "format:check": "dprint check",
     "lint": "oxlint .",
     "test": "node --test",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
     "eval:documentation-routing": "node --test evals/documentation-routing.ts",
     "eval:commit-message": "node --test evals/commit-message.ts",
     "bench:snapshot": "node scripts/bench-snapshot.ts",
