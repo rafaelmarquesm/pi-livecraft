@@ -3,7 +3,11 @@ import { defineConfig, devices } from '@playwright/test'
 // E2E runs against the real dev stack (Vite frontend proxying /api to the
 // backend). Offline mode keeps Pi from spending tokens while still allowing
 // session creation, fork points, search, and export (see spec §2.0).
-const vitePort = process.env.PI_LIVECRAFT_VITE_PORT ?? '5173'
+// Keep E2E isolated from the user's live dev stack. Dedicated defaults avoid
+// false positives where Playwright silently talks to an orphan on 43120/43121.
+const vitePort = process.env.PI_LIVECRAFT_E2E_VITE_PORT ?? '45173'
+const backendPort = process.env.PI_LIVECRAFT_E2E_BACKEND_PORT ?? '45121'
+const managerPort = process.env.PI_LIVECRAFT_E2E_MANAGER_PORT ?? '45120'
 const baseURL = `http://127.0.0.1:${vitePort}`
 
 export default defineConfig({
@@ -30,6 +34,9 @@ export default defineConfig({
     env: {
       ...process.env,
       PI_OFFLINE: '1',
+      PI_LIVECRAFT_VITE_PORT: vitePort,
+      PI_LIVECRAFT_BACKEND_PORT: backendPort,
+      PI_LIVECRAFT_MANAGER_PORT: managerPort,
     },
     stdout: 'pipe',
     stderr: 'pipe',
