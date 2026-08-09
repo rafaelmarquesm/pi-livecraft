@@ -1,11 +1,15 @@
 import { test, expect } from '@playwright/test'
-import { closeCurrentSession, createSession, openApp, openPalette, sendMessage } from './helpers.ts'
+import { closeCurrentSession, openPalette, openSeededSession } from './helpers.ts'
 
 // §2.3 / §3.4 — in-conversation search.
 test.describe('search', () => {
   test.beforeEach(async ({ page }) => {
-    await openApp(page)
-    await createSession(page)
+    await openSeededSession(page, [
+      'apple pie is my favorite',
+      'banana smoothies',
+      'apple tart is nice',
+      'The capital of France is Paris.',
+    ])
   })
 
   test.afterEach(async ({ page }) => {
@@ -22,10 +26,6 @@ test.describe('search', () => {
   }
 
   test('B1+B2+B4: counter, navigation, and empty term', async ({ page }) => {
-    await sendMessage(page, 'apple pie is my favorite')
-    await sendMessage(page, 'banana smoothies')
-    await sendMessage(page, 'apple tart is nice')
-
     await openSearch(page)
     const input = page.getByRole('searchbox', { name: 'Search conversation' })
     const count = page.getByRole('status').filter({ hasText: '/' })
@@ -46,7 +46,6 @@ test.describe('search', () => {
   })
 
   test('B5: matching is case-insensitive', async ({ page }) => {
-    await sendMessage(page, 'The capital of France is Paris.')
     await openSearch(page)
     const input = page.getByRole('searchbox', { name: 'Search conversation' })
     const count = page.getByRole('status').filter({ hasText: '/' })

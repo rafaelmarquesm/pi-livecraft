@@ -1,19 +1,15 @@
 import { test, expect } from '@playwright/test'
-import {
-  closeCurrentSession,
-  createSession,
-  openApp,
-  openExportDialog,
-  sendMessage,
-  waitForSessionPersisted,
-} from './helpers.ts'
+import { closeCurrentSession, openExportDialog, openSeededSession } from './helpers.ts'
 
 // §2.1 — Export (Fase 1.1), E1–E4. Runs offline: the user message persists so
 // the exported document has content.
 test.describe('export', () => {
   test.beforeEach(async ({ page }) => {
-    await openApp(page)
-    await createSession(page)
+    await openSeededSession(page, [
+      'What is the speed of light?',
+      'Name the color of a clear sky.',
+      'Name a planet in our solar system.',
+    ])
   })
 
   test.afterEach(async ({ page }) => {
@@ -30,7 +26,6 @@ test.describe('export', () => {
   })
 
   test('E2: Markdown download carries the User section and message text', async ({ page }) => {
-    await sendMessage(page, 'What is the speed of light?')
     await openExportDialog(page)
 
     const dialog = page.locator('.modal[role="dialog"]').filter({ hasText: 'Export session' })
@@ -47,9 +42,6 @@ test.describe('export', () => {
   })
 
   test('E4: JSONL download parses as one JSON object per line', async ({ page }) => {
-    await sendMessage(page, 'Name the color of a clear sky.')
-    await sendMessage(page, 'Name a planet in our solar system.')
-    await waitForSessionPersisted(page)
     await openExportDialog(page)
 
     const dialog = page.locator('.modal[role="dialog"]').filter({ hasText: 'Export session' })

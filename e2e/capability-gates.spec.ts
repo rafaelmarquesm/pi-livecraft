@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { closeCurrentSession, createSession, openApp, sendMessage } from './helpers.ts'
+import { closeCurrentSession, openSeededSession } from './helpers.ts'
 
 // §3.5 — the P1 regression: the fork button is gated on the snapshot reporting
 // the `fork` capability. The original incident shipped the gate so the button
@@ -11,9 +11,7 @@ test.describe('capability-gates', () => {
   })
 
   test('fork button is visible when the snapshot reports the fork capability', async ({ page }) => {
-    await openApp(page)
-    await createSession(page)
-    await sendMessage(page, 'List the numbers one two three.')
+    await openSeededSession(page, ['List the numbers one two three.'])
 
     const userMessage = page.locator('article.message.user', {
       hasText: 'List the numbers',
@@ -33,9 +31,7 @@ test.describe('capability-gates', () => {
       await route.fulfill({ response, json: body })
     })
 
-    await openApp(page)
-    await createSession(page)
-    await sendMessage(page, 'Say hello world.')
+    await openSeededSession(page, ['Say hello world.'])
 
     const userMessage = page.locator('article.message.user', { hasText: 'Say hello world' })
     await expect(userMessage).toBeVisible()

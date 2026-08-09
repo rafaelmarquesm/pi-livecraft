@@ -1,3 +1,7 @@
+import { randomUUID } from 'node:crypto'
+import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { basename, dirname, join } from 'node:path'
 import { expect, type Page } from '@playwright/test'
 
 /**
@@ -7,9 +11,14 @@ import { expect, type Page } from '@playwright/test'
  * enough to exercise fork points, search, tree, export, and the ledger.
  */
 
-/** Absolute workspace the app opens so sessions land in a throwaway repo. */
-export const WORKSPACE = process.env.PI_LIVECRAFT_E2E_WORKSPACE
+/** Absolute/canonical workspace used by both UI filtering and the backend.
+ * macOS resolves `/tmp` to `/private/tmp`; keeping the symlink spelling would
+ * make an opened session disappear from the current workspace. */
+const configuredWorkspace = process.env.PI_LIVECRAFT_E2E_WORKSPACE
   ?? '/tmp/pi-livecraft-e2e-workspace'
+export const WORKSPACE = existsSync(configuredWorkspace)
+  ? realpathSync(configuredWorkspace)
+  : join(realpathSync(dirname(configuredWorkspace)), basename(configuredWorkspace))
 
 /** Seeds a fresh workspace and clears the restored selection before load. */
 export async function openApp(page: Page, workspace = WORKSPACE): Promise<void> {
@@ -20,6 +29,93 @@ export async function openApp(page: Page, workspace = WORKSPACE): Promise<void> 
   }, workspace)
   await page.goto('/')
   await expect(page.getByRole('main').first()).toBeVisible({ timeout: 15_000 })
+}
+
+/**
+ * Opens a fully valid persisted Pi session without invoking an LLM. This is
+ * the deterministic fixture for fork/search/export: pi@latest may reject an
+ * offline prompt before persisting the user message on clean CI runners.
+ */
+export async function openSeededSession(page: Page, userMessages: string[]): Promise<string> {
+  const cwd = WORKSPACE
+  const sessionId = randomUUID()
+  const directory = join(homedir(), '.pi', 'agent', 'sessions', 'pi-livecraft-e2e')
+  mkdirSync(directory, { recursive: true })
+  const sessionPath = join(directory, `${Date.now()}_${sessionId}.jsonl`)
+  const now = Date.now()
+  const lines: string[] = [JSON.stringify({
+    type: 'session',
+    version: 3,
+    id: sessionId,
+    timestamp: new Date(now).toISOString(),
+    cwd,
+  })]
+  let parentId: string | null = null
+  let entry = 0
+  const append = (message: Record<string, unknown>): void => {
+    const id = entry.toString(16).padStart(8, '0')
+    lines.push(JSON.stringify({
+      type: 'message',
+      id,
+      parentId,
+      timestamp: new Date(now + entry).toISOString(),
+      message,
+    }))
+    parentId = id
+    entry += 1
+  }
+  userMessages.forEach((text, index) => {
+    append({ role: 'user', content: [{ type: 'text', text }], timestamp: now + entry })
+    append({
+      role: 'assistant',
+      content: [{ type: 'text', text: `Seeded response ${index + 1}.` }],
+      api: 'openai-completions',
+      provider: 'bench',
+      model: 'bench-model',
+      usage: {
+        input: 1,
+        output: 1,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 2,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: 'stop',
+      timestamp: now + entry,
+    })
+  })
+  writeFileSync(sessionPath, `${lines.join('\n')}\n`)
+
+  const response = await page.request.post('/api/sessions', {
+    data: { cwd, sessionPath },
+  })
+  expect(response.ok(), await response.text()).toBe(true)
+  const summary = await response.json() as { id: string }
+  await page.addInitScript((workspace) => {
+    window.localStorage.setItem('pi-livecraft.workspace-path', workspace)
+    window.localStorage.removeItem('pi-livecraft.selected-session')
+    window.localStorage.removeItem('pi-livecraft.right-sidebar-widget')
+  }, cwd)
+  await page.goto('/')
+  await expect(page.getByRole('main').first()).toBeVisible({ timeout: 15_000 })
+
+  // Select exactly the seeded session through the same sidebar affordance a
+  // user uses. useWorkspaceSessions intentionally owns auto-selection and
+  // does not initialize its state from the selected-session localStorage key.
+  const row = page
+    .getByRole('navigation', { name: 'Recent Pi sessions' })
+    .getByRole('button')
+    .filter({ hasText: userMessages[0] })
+    .first()
+  await expect(row).toBeVisible({ timeout: 30_000 })
+  await row.click()
+  await composer(page).waitFor({ state: 'visible', timeout: 120_000 })
+  await expect(page.getByText('Connecting to Pi…')).toBeHidden({ timeout: 120_000 })
+  await expect
+    .poll(() => page.evaluate(() => window.localStorage.getItem('pi-livecraft.selected-session')))
+    .not
+    .toBeNull()
+  return summary.id
 }
 
 /** The composer textarea (aria-label `Message`). Exact to avoid the Git commit-message input. */

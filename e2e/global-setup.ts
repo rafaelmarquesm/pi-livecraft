@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 const defaultWorkspace = '/tmp/pi-livecraft-e2e-workspace'
@@ -14,6 +15,10 @@ const workspace = process.env.PI_LIVECRAFT_E2E_WORKSPACE ?? defaultWorkspace
  */
 export default function globalSetup(): void {
   if (workspace === defaultWorkspace) rmSync(workspace, { force: true, recursive: true })
+  rmSync(join(homedir(), '.pi', 'agent', 'sessions', 'pi-livecraft-e2e'), {
+    force: true,
+    recursive: true,
+  })
   mkdirSync(workspace, { recursive: true })
   execFileSync('git', ['init', '-q'], { cwd: workspace })
   execFileSync('git', ['config', 'user.email', 'e2e@pi-livecraft.local'], { cwd: workspace })
