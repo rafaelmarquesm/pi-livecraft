@@ -4,8 +4,10 @@ import { parseGitDiff } from '../src/features/git/git-diff.ts'
 import {
   clampRightSidebarWidth,
   defaultRightSidebarWidth,
+  isRightPanelVisible,
   isRightWidget,
   maxRightSidebarWidth,
+  rightWidgetDefinitions,
   minRightSidebarWidth,
   readRightSidebarWidth,
 } from '../src/features/right-sidebar/right-sidebar.ts'
@@ -19,6 +21,21 @@ test('borne et restaure la largeur de la sidebar droite', () => {
   assert.equal(readRightSidebarWidth('invalid'), defaultRightSidebarWidth)
   assert.equal(isRightWidget('git'), true)
   assert.equal(isRightWidget('unknown'), false)
+})
+
+test('every registered right-sidebar widget has an explicit panel visibility policy', () => {
+  const unavailable = { analysis: false, git: false }
+  const available = { analysis: true, git: true }
+
+  assert.equal(isRightPanelVisible(null, available), false)
+  assert.equal(isRightPanelVisible('analysis', unavailable), false)
+  assert.equal(isRightPanelVisible('git', unavailable), false)
+  for (const { id } of rightWidgetDefinitions) {
+    assert.equal(isRightPanelVisible(id, available), true, `${id} should allocate panel width`)
+  }
+  for (const id of ['quotas', 'usage', 'todo'] as const) {
+    assert.equal(isRightPanelVisible(id, unavailable), true, `${id} is always available`)
+  }
 })
 
 test('parse un diff unifié sans ses métadonnées Git', () => {

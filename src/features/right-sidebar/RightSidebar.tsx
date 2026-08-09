@@ -26,7 +26,12 @@ import type {
 import { TodoWidget } from '../todo/TodoWidget.tsx'
 import { loadTodos } from '../todo/todo-cache.ts'
 import { UsageWidget } from '../usage/UsageWidget.tsx'
-import { maxRightSidebarWidth, minRightSidebarWidth, type RightWidget } from './right-sidebar.ts'
+import {
+  isRightPanelVisible,
+  maxRightSidebarWidth,
+  minRightSidebarWidth,
+  type RightWidget,
+} from './right-sidebar.ts'
 import { WidgetLayout } from './WidgetLayout.tsx'
 
 export interface RailAction {
@@ -115,8 +120,10 @@ export function RightSidebar({
       cancelled = true
     }
   }, [activeWidget, workspacePath])
-  const collapsed = activeWidget === null || (activeWidget === 'analysis' && !analysis)
-    || (activeWidget === 'git' && !snapshot)
+  const collapsed = !isRightPanelVisible(activeWidget, {
+    analysis: analysis !== null,
+    git: snapshot?.repository === true,
+  })
   const quotaSummary = railQuota(quotas, currentQuotaProvider)
 
   /** Installs temporary listeners needed for panel pointer resizing. */

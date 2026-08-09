@@ -65,6 +65,7 @@ import {
 } from './features/dialogs/dialog-protocol.ts'
 import {
   clampRightSidebarWidth,
+  isRightPanelVisible,
   isRightWidget,
   readRightSidebarWidth,
   type RightWidget,
@@ -1348,10 +1349,10 @@ function App() {
   ], [showToast, terminalCommand, workspacePath])
 
   // Application layout
-  const rightPanelVisible = activeRightWidget === 'todo' || activeRightWidget === 'quotas'
-    || activeRightWidget === 'usage'
-    || (activeRightWidget === 'analysis' && sessionAnalysis !== null)
-    || (activeRightWidget === 'git' && gitSnapshot?.repository === true)
+  const rightPanelVisible = isRightPanelVisible(activeRightWidget, {
+    analysis: sessionAnalysis !== null,
+    git: gitSnapshot?.repository === true,
+  })
 
   // Extension UI display state for the selected session (reduced in the event router).
   const selectedExtensionUi = selectedSession ? extensionUi[selectedSession.id] : undefined
