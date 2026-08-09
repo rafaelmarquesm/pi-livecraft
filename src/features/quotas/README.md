@@ -1,6 +1,6 @@
 # Provider quotas widget
 
-The quotas widget gives a quick answer to a practical question: how much of the current provider allowance is left? The rail shows a compact percentage for the provider used by the selected model, while the panel keeps both supported providers available for comparison.
+The quotas widget gives a quick answer to a practical question: how much of the current provider allowance is left? The `%` rail shows a compact percentage for the provider used by the selected model, while the panel keeps both supported providers available for comparison. It is intentionally distinct from the `$` Usage panel, which shows historical cost, token, cache, input:output, and generation-speed metrics. A prominent link in Quotas opens Usage so users do not have to infer that distinction from glyphs alone.
 
 ## What it shows
 
@@ -24,4 +24,4 @@ For the rail summary, Codex prefers its five-hour window. Copilot uses the first
 
 Requests travel through `src/api.ts` and the [quotas backend capability](/server/features/quotas/README.md). Pi Livecraft's quota extension publishes a validated, versioned status payload through Pi rather than reading provider state directly from the browser.
 
-Focused coverage: `test/quotas.test.ts`.
+Focused coverage: `test/quotas.test.ts`; `e2e/buttons.spec.ts` verifies the `%` panel, its Usage handoff, the `$` rail's direct reopen, and the rendered inference metrics.

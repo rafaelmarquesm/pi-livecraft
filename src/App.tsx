@@ -1349,6 +1349,7 @@ function App() {
 
   // Application layout
   const rightPanelVisible = activeRightWidget === 'todo' || activeRightWidget === 'quotas'
+    || activeRightWidget === 'usage'
     || (activeRightWidget === 'analysis' && sessionAnalysis !== null)
     || (activeRightWidget === 'git' && gitSnapshot?.repository === true)
 

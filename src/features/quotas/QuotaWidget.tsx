@@ -4,7 +4,11 @@ import type { QuotaProviderSnapshot, QuotaSnapshot } from '../../../shared/types
 
 /** Displays normalized quota readings without deducing absent quota from provider responses. */
 export function QuotaWidget(
-  { quotas, onRefresh }: { quotas: QuotaSnapshot | null; onRefresh: () => Promise<void> },
+  { quotas, onOpenUsage, onRefresh }: {
+    quotas: QuotaSnapshot | null
+    onOpenUsage: () => void
+    onRefresh: () => Promise<void>
+  },
 ) {
   const [refreshing, setRefreshing] = useState(false)
   const updatedAt = Math.max(quotas?.openai.updatedAt ?? 0, quotas?.copilot.updatedAt ?? 0)
@@ -39,6 +43,14 @@ export function QuotaWidget(
         </Tooltip>
       </header>
       <div className='widget-content quota-content' aria-busy={refreshing || quotas?.refreshing}>
+        <button
+          className='quota-usage-link'
+          onClick={onOpenUsage}
+          type='button'
+        >
+          <strong>$ Usage &amp; inference metrics</strong>
+          <span>Costs, cache hit rate, input:output and generation speed</span>
+        </button>
         {!quotas ? <QuotaSkeleton /> : (
           <>
             {quotas.sessionRequired && (

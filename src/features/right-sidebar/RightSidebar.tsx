@@ -218,7 +218,11 @@ export function RightSidebar({
               />
             )}
             {activeWidget === 'quotas' && (
-              <QuotaWidget onRefresh={onQuotaRefresh} quotas={quotas} />
+              <QuotaWidget
+                onOpenUsage={() => onWidgetSelect('usage')}
+                onRefresh={onQuotaRefresh}
+                quotas={quotas}
+              />
             )}
             {activeWidget === 'usage' && <UsageWidget workspacePath={workspacePath} />}
             {activeWidget === 'todo' && (
@@ -274,7 +278,9 @@ export function RightSidebar({
             </button>
           </Tooltip>
         )}
-        <Tooltip label={quotaSummary?.label ?? 'Quotas'}>
+        <Tooltip
+          label={quotaSummary ? `Provider quotas — ${quotaSummary.label}` : 'Provider quotas'}
+        >
           <button
             aria-controls={activeWidget === 'quotas' ? 'quotas-panel' : undefined}
             aria-expanded={activeWidget === 'quotas'}
@@ -291,7 +297,7 @@ export function RightSidebar({
             {quotaSummary?.stale && <small>!</small>}
           </button>
         </Tooltip>
-        <Tooltip label='Usage'>
+        <Tooltip label='Usage & inference metrics'>
           <button
             aria-controls={activeWidget === 'usage' ? 'usage-panel' : undefined}
             aria-expanded={activeWidget === 'usage'}
