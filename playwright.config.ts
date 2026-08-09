@@ -12,6 +12,9 @@ const baseURL = `http://127.0.0.1:${vitePort}`
 
 export default defineConfig({
   testDir: './e2e',
+  globalSetup: './e2e/global-setup.ts',
+  // Real Pi startup can exceed Playwright's 30s default on a cold CI runner.
+  timeout: 120_000,
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,

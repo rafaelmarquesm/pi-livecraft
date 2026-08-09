@@ -291,9 +291,11 @@ test(
       assert.ok(isObject(emptyDelta.data) && Array.isArray(emptyDelta.data.entries))
       assert.deepEqual(emptyDelta.data.entries, [])
 
-      // An offline prompt appends a user message entry without an LLM call.
-      const prompt = await pi.request({ type: 'prompt', message: 'incremental cursor probe' })
-      assert.equal(prompt.success, true)
+      // A bash command appends context entries without an LLM call. Newer Pi
+      // builds return success:false for offline prompts, so prompt was not a
+      // version-stable way to exercise the cursor delta.
+      const bash = await pi.request({ type: 'bash', command: 'printf incremental-cursor-probe' })
+      assert.equal(bash.success, true)
       const delta = await pi.request({ type: 'get_entries', since: lastId })
       assert.equal(delta.success, true)
       assert.ok(isObject(delta.data) && Array.isArray(delta.data.entries))
