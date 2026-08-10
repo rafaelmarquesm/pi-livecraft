@@ -13,6 +13,10 @@ import {
   type UsageEntryUsage,
   type UsageRecord,
 } from '../server/features/usage/usage-ledger.ts'
+import {
+  AuxiliaryUsageLedger,
+  parseAuxiliaryUsageStore,
+} from '../server/features/usage/auxiliary-usage-ledger.ts'
 
 const fixturesDirectory = fileURLToPath(new URL('fixtures/sessions/', import.meta.url))
 
@@ -195,6 +199,157 @@ test('backfills provider and model identity for legacy records without duplicati
     const records = parseUsageStore(await readFile(path, 'utf8'))
     assert.equal(records.length, 2)
     assert.deepEqual(records.map((record) => record.provider), ['anthropic', 'anthropic'])
+  } finally {
+    await rm(directory, { force: true, recursive: true })
+  }
+})
+
+test('keeps legacy records as unknown purpose while new session records default to main', () => {
+  const legacy = parseUsageStore(
+    '{"entryId":"11111111","sessionId":"s1","cwd":"/w","timestamp":"2026-08-08T10:00:00.000Z","cost":0.01,"totalTokens":10,"input":10,"output":0,"cacheRead":0,"cacheWrite":0}',
+  )
+  const fresh = usageRecordsForEntries([
+    {
+      type: 'message',
+      id: '22222222',
+      timestamp: '2026-08-08T10:00:01.000Z',
+      message: { role: 'assistant', usage: { cost: { total: 0.02 }, input: 10, output: 2 } },
+    },
+  ])
+
+  assert.equal(legacy[0].purpose, undefined)
+  assert.equal(fresh[0].purpose, 'main')
+
+  const rollup = rollupUsageRecords([
+    ...legacy,
+    { ...fresh[0], sessionId: 's1', cwd: '/w' },
+  ], '/w')
+  assert.deepEqual(
+    rollup.byPurpose.map((bucket) => [bucket.purpose, bucket.cost]),
+    [['main', 0.02], ['unknown', 0.01]],
+  )
+})
+
+test('applies branch-local automated validation attribution to assistant usage', () => {
+  const usage = { cost: { total: 0.01 }, input: 10, output: 5 }
+  const records = usageRecordsForEntries([
+    {
+      type: 'message',
+      id: '11111111',
+      timestamp: '2026-08-08T10:00:00.000Z',
+      message: { role: 'assistant', usage },
+    },
+    {
+      type: 'custom',
+      customType: 'pi-livecraft.validated-work-attribution',
+      data: {
+        protocol: 'pi-livecraft.validated-work-attribution',
+        version: 1,
+        cycleId: 'cycle-a',
+        purpose: 'automated_validation',
+        markerId: 'auto-a',
+        reason: 'checks-not-passed',
+        stateRevision: 1,
+        startedAt: 1,
+      },
+    },
+    {
+      type: 'message',
+      id: '22222222',
+      timestamp: '2026-08-08T10:00:01.000Z',
+      message: { role: 'toolResult' },
+    },
+    {
+      type: 'message',
+      id: '33333333',
+      timestamp: '2026-08-08T10:00:02.000Z',
+      message: { role: 'assistant', usage },
+    },
+    {
+      type: 'custom',
+      customType: 'pi-livecraft.validated-work-attribution',
+      data: {
+        protocol: 'pi-livecraft.validated-work-attribution',
+        version: 1,
+        cycleId: 'cycle-a',
+        purpose: 'automated_validation',
+        markerId: 'auto-a',
+        reason: 'checks-not-passed',
+        stateRevision: 1,
+        startedAt: 1,
+        targetEntryId: '33333333',
+        settledAt: 2,
+      },
+    },
+  ])
+
+  assert.deepEqual(
+    records.map((record) => [record.entryId, record.purpose]),
+    [['11111111', 'main'], ['33333333', 'automated_validation']],
+  )
+})
+
+test('merges auxiliary ledger records into byPurpose without duplicate operation cost', () => {
+  const session: UsageRecord = {
+    entryId: '11111111',
+    sessionId: 's1',
+    cwd: '/w',
+    timestamp: '2026-08-08T10:00:00.000Z',
+    purpose: 'main',
+    cost: 1,
+    totalTokens: 10,
+    input: 8,
+    output: 2,
+    cacheRead: 0,
+    cacheWrite: 0,
+  }
+  const auxiliary = {
+    operationId: 'op-review',
+    cwd: '/w',
+    timestamp: '2026-08-08T10:01:00.000Z',
+    purpose: 'code_review' as const,
+    cost: 2,
+    totalTokens: 20,
+    input: 15,
+    output: 5,
+    cacheRead: 0,
+    cacheWrite: 0,
+  }
+  const rollup = rollupUsageRecords([session, session], '/w', [auxiliary, auxiliary, {
+    ...auxiliary,
+    operationId: 'op-prompt',
+    purpose: 'prompt_improvement',
+    cost: 3,
+  }])
+
+  assert.equal(rollup.totals.cost, 6)
+  assert.deepEqual(
+    rollup.byPurpose.map((bucket) => [bucket.purpose, bucket.cost]),
+    [['main', 1], ['code_review', 2], ['prompt_improvement', 3]],
+  )
+})
+
+test('auxiliary ledger writes 0600 atomically and dedupes operation ids', async () => {
+  const { directory, path } = await temporaryStore()
+  try {
+    const ledger = new AuxiliaryUsageLedger(path)
+    const record = {
+      operationId: 'op-1',
+      cwd: '/w',
+      timestamp: '2026-08-08T10:00:00.000Z',
+      purpose: 'other_isolated' as const,
+      cost: 0.01,
+      totalTokens: 10,
+      input: 8,
+      output: 2,
+      cacheRead: 0,
+      cacheWrite: 0,
+    }
+    await Promise.all([ledger.append(record), ledger.append(record)])
+    assert.equal((await stat(path)).mode & 0o777, 0o600)
+    assert.equal((await ledger.load()).length, 1)
+    const content = await readFile(path, 'utf8')
+    assert.equal(parseAuxiliaryUsageStore(`${content}{"operationId":"op-2"`).length, 1)
   } finally {
     await rm(directory, { force: true, recursive: true })
   }

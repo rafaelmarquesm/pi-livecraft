@@ -37,6 +37,8 @@ export interface UsageRecord {
   provider?: string
   /** Model that produced the usage, when the entry reports one (assistant messages). */
   model?: string
+  /** Purpose attributed to this record; absent legacy records roll up as unknown. */
+  purpose?: UsagePurpose
   /** Billed cost in USD from `usage.cost.total`. */
   cost: number
   /** Total tokens from `usage.totalTokens` (0 when the entry omits it). */
@@ -49,6 +51,32 @@ export interface UsageRecord {
 
 /** Usage extracted from an entry, before the ledger stamps session identity. */
 export type UsageEntryUsage = Omit<UsageRecord, 'sessionId' | 'cwd'>
+
+export type UsagePurpose =
+  | 'main'
+  | 'automated_validation'
+  | 'code_review'
+  | 'prompt_improvement'
+  | 'other_isolated'
+
+export type UsagePurposeBucket = UsagePurpose | 'unknown'
+
+export interface AuxiliaryUsageRollupRecord {
+  operationId: string
+  cwd: string
+  timestamp: string
+  durationMs?: number
+  provider?: string
+  model?: string
+  thinking?: string
+  purpose: Extract<UsagePurpose, 'code_review' | 'prompt_improvement' | 'other_isolated'>
+  cost: number
+  totalTokens: number
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+}
 
 export interface UsageAggregate {
   cost: number
@@ -81,6 +109,8 @@ export interface UsageRollup {
   byProvider: Array<{ provider: string } & UsageAggregate>
   /** Aggregates bucketed by model, alphabetical; records without a model bucket as 'unknown'. */
   byModel: Array<{ model: string } & UsageAggregate>
+  /** Aggregates bucketed by attributed purpose; legacy records bucket as 'unknown'. */
+  byPurpose: Array<{ purpose: UsagePurposeBucket } & UsageAggregate>
 }
 
 const entryIdPattern = /^[0-9a-f]{8}$/
@@ -104,6 +134,7 @@ const entryIdPattern = /^[0-9a-f]{8}$/
  */
 export function usageRecordsForEntries(entries: JsonObject[]): UsageEntryUsage[] {
   const records: UsageEntryUsage[] = []
+  const purposeByEntryId = attributedPurposes(entries)
   // Timestamp of the previous entry in the array (append order). The delta
   // between consecutive entries approximates the generation duration of the
   // current one; a break in the chain (unusable timestamp) drops turnMs for
@@ -130,6 +161,7 @@ export function usageRecordsForEntries(entries: JsonObject[]): UsageEntryUsage[]
       turnMs,
       provider: usage.provider,
       model: usage.model,
+      purpose: purposeByEntryId.get(entry.id) ?? 'main',
       cost: usage.cost,
       totalTokens: usage.totalTokens,
       input: usage.input,
@@ -155,17 +187,33 @@ export function usageRecordsForEntries(entries: JsonObject[]): UsageEntryUsage[]
  * records carrying a `turnMs` and positive output (omitted when none). All
  * derived fields are optional so older consumers keep working.
  */
-export function rollupUsageRecords(records: UsageRecord[], cwd: string): UsageRollup {
-  const scoped = records.filter((record) => record.cwd === cwd)
+export function rollupUsageRecords(
+  records: UsageRecord[],
+  cwd: string,
+  auxiliaryRecords: AuxiliaryUsageRollupRecord[] = [],
+): UsageRollup {
+  const scoped = [
+    ...records.map((record): UsageRollupRecord => ({ key: recordKey(record), record })),
+    ...dedupeAuxiliaryRecords(auxiliaryRecords).map((record): UsageRollupRecord => ({
+      key: `auxiliary:${record.operationId}`,
+      record,
+    })),
+  ]
+    .filter(({ record }) => record.cwd === cwd)
   const totals = emptyCounters()
   const byDay = new Map<string, AggregateCounters>()
   const byProvider = new Map<string, AggregateCounters>()
   const byModel = new Map<string, AggregateCounters>()
-  for (const record of scoped) {
+  const byPurpose = new Map<UsagePurposeBucket, AggregateCounters>()
+  const seen = new Set<string>()
+  for (const { key, record } of scoped) {
+    if (seen.has(key)) continue
+    seen.add(key)
     mergeRecord(totals, record)
     accumulate(byDay, record.timestamp.slice(0, 10), record)
     accumulate(byProvider, record.provider ?? 'unknown', record)
     accumulate(byModel, record.model ?? 'unknown', record)
+    accumulate(byPurpose, record.purpose ?? 'unknown', record)
   }
   return {
     cwd,
@@ -179,6 +227,9 @@ export function rollupUsageRecords(records: UsageRecord[], cwd: string): UsageRo
     byModel: [...byModel.entries()]
       .map(([model, counters]) => ({ model, ...toAggregate(counters) }))
       .sort((a, b) => a.model.localeCompare(b.model)),
+    byPurpose: [...byPurpose.entries()]
+      .map(([purpose, counters]) => ({ purpose, ...toAggregate(counters) }))
+      .sort((a, b) => purposeSortKey(a.purpose) - purposeSortKey(b.purpose)),
   }
 }
 
@@ -343,10 +394,85 @@ function isUsageRecord(value: unknown): value is UsageRecord {
     return false
   if (typeof value.timestamp !== 'string' || Number.isNaN(Date.parse(value.timestamp))) return false
   if (!isOptionalIdentifier(value.provider) || !isOptionalIdentifier(value.model)) return false
+  if (value.purpose !== undefined && !isUsagePurpose(value.purpose)) return false
   if (value.turnMs !== undefined && (!isFiniteNumber(value.turnMs) || value.turnMs < 0))
     return false
   return ['cost', 'totalTokens', 'input', 'output', 'cacheRead', 'cacheWrite']
     .every((key) => isFiniteNumber(value[key]) && value[key] >= 0)
+}
+
+function attributedPurposes(entries: JsonObject[]): Map<string, UsagePurpose> {
+  const purposes = new Map<string, UsagePurpose>()
+  const markerById = new Map<string, { purpose: UsagePurpose; index: number }>()
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index]
+    if (!isObject(entry) || entry.type !== 'custom') continue
+    if (entry.customType !== 'pi-livecraft.validated-work-attribution') continue
+    const data = isObject(entry.data) ? entry.data : undefined
+    if (!data || data.protocol !== 'pi-livecraft.validated-work-attribution') continue
+    if (data.version !== 1 || !isUsagePurpose(data.purpose)) continue
+    if (typeof data.targetEntryId === 'string' && entryIdPattern.test(data.targetEntryId)) {
+      purposes.set(data.targetEntryId, data.purpose)
+      continue
+    }
+    if (typeof data.markerId === 'string')
+      markerById.set(data.markerId, { purpose: data.purpose, index })
+  }
+  for (const marker of markerById.values()) {
+    const target = lastAssistantEntryIdAfter(entries, marker.index)
+    if (target && !purposes.has(target)) purposes.set(target, marker.purpose)
+  }
+  return purposes
+}
+
+function lastAssistantEntryIdAfter(entries: JsonObject[], markerIndex: number): string | undefined {
+  for (let index = entries.length - 1; index > markerIndex; index -= 1) {
+    const entry = entries[index]
+    if (
+      isObject(entry) && entry.type === 'message' && typeof entry.id === 'string'
+      && entryIdPattern.test(entry.id) && isObject(entry.message) && entry
+          .message
+          .role === 'assistant'
+    ) return entry.id
+  }
+  return undefined
+}
+
+interface UsageRollupRecord {
+  key: string
+  record: UsageRecord | AuxiliaryUsageRollupRecord
+}
+
+function recordKey(record: UsageRecord): string {
+  return `session:${record.sessionId}:${record.entryId}`
+}
+
+function dedupeAuxiliaryRecords<T extends AuxiliaryUsageRollupRecord>(records: T[]): T[] {
+  const seen = new Set<string>()
+  const unique: T[] = []
+  for (const record of records) {
+    if (seen.has(record.operationId)) continue
+    seen.add(record.operationId)
+    unique.push(record)
+  }
+  return unique
+}
+
+const purposeOrder: UsagePurposeBucket[] = [
+  'main',
+  'automated_validation',
+  'code_review',
+  'prompt_improvement',
+  'other_isolated',
+  'unknown',
+]
+
+function purposeSortKey(purpose: UsagePurposeBucket): number {
+  return purposeOrder.indexOf(purpose)
+}
+
+export function isUsagePurpose(value: unknown): value is UsagePurpose {
+  return purposeOrder.includes(value as UsagePurposeBucket) && value !== 'unknown'
 }
 
 /** Entries strictly after the session cursor; the whole list when the cursor is unknown. */
@@ -387,15 +513,20 @@ function emptyCounters(): AggregateCounters {
   }
 }
 
-function mergeRecord(counters: AggregateCounters, record: UsageRecord): void {
+function mergeRecord(
+  counters: AggregateCounters,
+  record: UsageRecord | AuxiliaryUsageRollupRecord,
+): void {
   counters.cost += record.cost
   counters.totalTokens += record.totalTokens
   counters.records += 1
   counters.input += record.input
   counters.output += record.output
   counters.cacheRead += record.cacheRead
-  if (isFiniteNumber(record.turnMs) && record.turnMs > 0 && record.output > 0) {
-    counters.rateSum += record.output / (record.turnMs / 1000)
+  const durationMs = (record as AuxiliaryUsageRollupRecord).durationMs
+    ?? (record as UsageRecord).turnMs
+  if (isFiniteNumber(durationMs) && durationMs > 0 && record.output > 0) {
+    counters.rateSum += record.output / (durationMs / 1000)
     counters.rateRecords += 1
   }
 }
@@ -416,10 +547,10 @@ function toAggregate(counters: AggregateCounters): UsageAggregate {
   return aggregate
 }
 
-function accumulate(
-  buckets: Map<string, AggregateCounters>,
-  key: string,
-  record: UsageRecord,
+function accumulate<K extends string>(
+  buckets: Map<K, AggregateCounters>,
+  key: K,
+  record: UsageRecord | AuxiliaryUsageRollupRecord,
 ): void {
   const counters = buckets.get(key) ?? emptyCounters()
   mergeRecord(counters, record)

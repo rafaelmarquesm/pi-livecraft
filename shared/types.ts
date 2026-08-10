@@ -154,6 +154,7 @@ export interface ManagerRequest {
   extensions?: string[]
   tools?: string[]
   includeContextFiles?: boolean
+  usagePurpose?: 'code_review' | 'prompt_improvement' | 'other_isolated'
   direction?: string
 }
 

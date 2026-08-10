@@ -6,6 +6,7 @@ Owner: `server/features/usage/usage-ledger.ts`.
 ## Store (M6 pattern)
 
 - Path: `~/.pi-livecraft/usage.jsonl`, overridable with `PI_LIVECRAFT_USAGE_STORE` (used by tests).
+- Isolated operation usage is stored separately at `~/.pi-livecraft/auxiliary-usage.jsonl`, overridable with `PI_LIVECRAFT_AUXILIARY_USAGE_STORE`.
 - One JSON line per billable record (`UsageRecord`), append-only.
 - Written via tmp + `rename`, `mode: 0o600`, through a serialized write queue.
 - Strict validation at the boundary (`parseUsageStore`): every complete line must be
@@ -34,6 +35,7 @@ interface UsageRecord {
   output: number
   cacheRead: number
   cacheWrite: number
+  purpose?: 'main' | 'automated_validation' | 'code_review' | 'prompt_improvement' | 'other_isolated'
 }
 ```
 
@@ -52,6 +54,11 @@ timestamp are skipped. There is no local price table (E8). Provider/model identi
 when the entry reports it; tool, compaction, and legacy records remain `unknown` rather than being
 guessed. On the next settle of a legacy session, the ledger backfills missing identity by matching
 its stable `entryId` against that session's real entries, atomically and without duplicating cost.
+
+`purpose` defaults to `main` for newly extracted session entries unless a branch-local
+`pi-livecraft.validated-work-attribution` custom entry targets the assistant entry as
+`automated_validation`. Records written before this field remain valid and roll up as
+`unknown`.
 
 `turnMs` is derived at extraction (Backlog B): the delta between the entry's
 timestamp and the previous entry's timestamp (entries arrive in append order;
@@ -81,12 +88,16 @@ workspace. Response shape:
   },
   "byDay": [{ "day": "2026-08-08", "cost": 1.2155, "totalTokens": 38370, "records": 4 }],
   "byProvider": [{ "provider": "anthropic", "cost": 0.0955, "totalTokens": 3630, "records": 2 }],
-  "byModel": [{ "model": "claude-opus-4-1", "cost": 0.0955, "totalTokens": 3630, "records": 2 }]
+  "byModel": [{ "model": "claude-opus-4-1", "cost": 0.0955, "totalTokens": 3630, "records": 2 }],
+  "byPurpose": [{ "purpose": "main", "cost": 0.0955, "totalTokens": 3630, "records": 2 }]
 }
 ```
 
 - `byDay` bucketed by UTC day (`timestamp.slice(0, 10)`), most recent first.
 - `byProvider` and `byModel` alphabetical; records without identity bucket as `"unknown"`.
+- `byPurpose` uses the fixed display order: main session, automated validation, code review,
+  prompt improvement, other isolated, unknown legacy. Auxiliary records are deduped by
+  operation id before merging so isolated cost is not counted twice.
 - Every aggregate (totals, each day, each model) carries derived inference
   metrics (Backlog B), all optional so older consumers keep working:
   - `cacheHitRate` — `cacheRead / (input + cacheRead)` in 0..1; `0` when the

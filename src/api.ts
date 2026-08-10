@@ -330,6 +330,7 @@ export interface RunPromptOptions {
   thinkingLevel?: string
   model?: { provider: string; modelId: string }
   tools?: string[]
+  usagePurpose?: 'code_review' | 'prompt_improvement' | 'other_isolated'
   /** Disable automatic AGENTS.md/CLAUDE.md loading (default true). Set false to provide your own context. */
   includeContextFiles?: boolean
 }
@@ -445,6 +446,18 @@ export interface UsageModel extends UsageTotals {
   model: string
 }
 
+export type UsagePurpose =
+  | 'main'
+  | 'automated_validation'
+  | 'code_review'
+  | 'prompt_improvement'
+  | 'other_isolated'
+  | 'unknown'
+
+export interface UsagePurposeBucket extends UsageTotals {
+  purpose: UsagePurpose
+}
+
 /** Response of GET /api/usage?cwd=… — the workspace usage rollup served by the ledger. */
 export interface UsageSnapshot {
   cwd: string
@@ -452,6 +465,7 @@ export interface UsageSnapshot {
   byDay: UsageDay[]
   byProvider: UsageProvider[]
   byModel: UsageModel[]
+  byPurpose: UsagePurposeBucket[]
 }
 
 export async function getUsage(cwd: string): Promise<UsageSnapshot> {

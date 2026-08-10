@@ -114,6 +114,7 @@ export async function generateCommitMessage(
     prompt: buildCommitPrompt(diff),
     systemPrompt,
     includeContextFiles: false,
+    usagePurpose: 'prompt_improvement',
   })
   return { message: normalizeCommitMessage(result.text), cost: result.cost }
 }

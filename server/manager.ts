@@ -16,6 +16,7 @@ import {
   loadPromptImprovementSystemPrompt,
 } from './prompt-improvement.ts'
 import { runIsolatedPrompt } from './run-isolated-prompt.ts'
+import { isAuxiliaryUsagePurpose } from './features/usage/auxiliary-usage-ledger.ts'
 import { isObject } from '../shared/is-object.ts'
 import {
   isBlockingUiRequest,
@@ -484,12 +485,15 @@ async function improvePrompt(request: ManagerRequest): Promise<{ prompt: string;
     prompt: `<user_prompt>\n${request.prompt.trim()}\n</user_prompt>`,
     systemPrompt: `${systemPrompt}\n\n${directionBlock}${projectMap}`,
     includeContextFiles: false,
+    usagePurpose: 'prompt_improvement',
   })
   return { prompt: result.text, cost: result.cost }
 }
 
 /** Runs a prompt in an isolated, disposable Pi process with caller-controlled configuration. */
-async function runPrompt(request: ManagerRequest): Promise<{ text: string }> {
+async function runPrompt(
+  request: ManagerRequest,
+): Promise<{ text: string; operationId: string; stats: unknown }> {
   if (
     typeof request.sessionId !== 'string' || typeof request.prompt !== 'string' || !request
       .prompt
@@ -517,8 +521,11 @@ async function runPrompt(request: ManagerRequest): Promise<{ text: string }> {
     includeContextFiles: typeof request.includeContextFiles === 'boolean'
       ? request.includeContextFiles
       : undefined,
+    usagePurpose: isAuxiliaryUsagePurpose(request.usagePurpose)
+      ? request.usagePurpose
+      : 'other_isolated',
   })
-  return { text: result.text }
+  return { text: result.text, stats: result.stats, operationId: result.operationId }
 }
 
 function isModelOption(value: unknown): value is { provider: string; modelId: string } {

@@ -190,22 +190,19 @@ export default function registerValidatedWork(pi: ExtensionAPI): void {
     pendingTools.clear()
   })
 
-  pi.on('message_end', (event) => {
-    if (!activeSyntheticTurn || !isObject(event) || !isObject(event.message)) return
-    if (event.message.role !== 'assistant') return
-    const entryId = typeof event.message.id === 'string'
-      ? event.message.id
-      : typeof (event as { id?: unknown }).id === 'string'
-      ? (event as { id: string }).id
-      : undefined
-    appendAttribution({ ...activeSyntheticTurn, targetEntryId: entryId, settledAt: Date.now() })
-  })
-
   pi.on('agent_settled', (_event, ctx) => {
     if (!activeSyntheticTurn) {
       maybeQueueValidatedFollowUp(ctx)
       return
     }
+    appendAttribution({
+      ...activeSyntheticTurn,
+      targetEntryId: resolveAttributionTarget(
+        ctx.sessionManager.getBranch() as BranchEntryLike[],
+        activeSyntheticTurn.markerId,
+      ),
+      settledAt: Date.now(),
+    })
     activeSyntheticTurn = undefined
     maybeQueueValidatedFollowUp(ctx)
   })
@@ -423,4 +420,28 @@ function followUpText(code: string, text: string): string {
   if (code === 'confidence-spike-unreviewed')
     return `Review the confidence spike and either justify it with evidence or lower confidence. ${text}`
   return `Address this Validated Work blocker, then update validated_work: ${text}`
+}
+
+function resolveAttributionTarget(
+  branch: readonly BranchEntryLike[],
+  markerId: string,
+): string | undefined {
+  const markerIndex = branch.findIndex((entry) => {
+    if (entry.type !== 'custom' || entry.customType !== validatedWorkAttributionType) return false
+    if (!isObject(entry.data)) return false
+    return entry.data.markerId === markerId && entry.data.targetEntryId === undefined
+  })
+  if (markerIndex < 0) return undefined
+  for (let index = branch.length - 1; index > markerIndex; index -= 1) {
+    const entry = branch[index]
+    if (entry.type !== 'message' || !isObject(entry.message)) continue
+    if (entry.message.role !== 'assistant') continue
+    const entryId = typeof (entry as { id?: unknown }).id === 'string'
+      ? (entry as { id: string }).id
+      : typeof entry.message.id === 'string'
+      ? entry.message.id
+      : undefined
+    if (entryId) return entryId
+  }
+  return undefined
 }

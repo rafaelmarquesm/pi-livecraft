@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Tooltip } from '../../components/Tooltip.tsx'
-import { getUsage, type UsageSnapshot, type UsageTotals } from '../../api.ts'
+import { getUsage, type UsagePurpose, type UsageSnapshot, type UsageTotals } from '../../api.ts'
 import { formatTokens, formatTurnCost } from '../conversation/message-usage.ts'
 import { lastUsageDays, usageBarHeight, usageDayLabel, usageStatsParts } from './usage-display.ts'
 
@@ -193,8 +193,52 @@ function UsageSummary({ snapshot }: { snapshot: UsageSnapshot }) {
           </ul>
         </section>
       )}
+      {snapshot.byPurpose.length > 0 && (
+        <section className='usage-models' aria-label='Usage by purpose'>
+          <h2>By purpose</h2>
+          <ul>
+            {snapshot
+              .byPurpose
+              .map((entry) => (
+                <li key={entry.purpose}>
+                  <span className='usage-model-name'>
+                    {usagePurposeLabel(
+                      entry
+                        .purpose,
+                    )}
+                  </span>
+                  <b>
+                    {formatTurnCost(
+                      entry
+                        .cost,
+                    )}
+                  </b>
+                  <small>{usageBucketDetails(entry)}</small>
+                </li>
+              ))}
+          </ul>
+          <p className='usage-caveat'>
+            Attributed usage includes automated follow-ups and isolated reviews. The extra tool
+            schema included in ordinary model calls cannot be separated exactly here; paired eval
+            campaigns measure that delta.
+          </p>
+        </section>
+      )}
     </>
   )
+}
+
+const usagePurposeLabels: Record<UsagePurpose, string> = {
+  main: 'Main session',
+  automated_validation: 'Automated validation',
+  code_review: 'Code review',
+  prompt_improvement: 'Prompt improvement',
+  other_isolated: 'Other isolated',
+  unknown: 'Unknown legacy',
+}
+
+function usagePurposeLabel(purpose: UsagePurpose): string {
+  return usagePurposeLabels[purpose] ?? purpose
 }
 
 function usageBucketDetails(entry: UsageTotals): string {

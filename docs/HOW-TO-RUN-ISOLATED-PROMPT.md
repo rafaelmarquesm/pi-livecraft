@@ -34,7 +34,9 @@ server/run-isolated-prompt.ts
     │  → get_messages → extract assistant text
     │  → terminate
     ▼
-Assistant text (string)
+Assistant text for browser callers; server callers also receive operation id,
+observed provider/model/thinking, duration, token/cost stats, and structured tool
+details from `runIsolatedPrompt()`.
 ```
 
 ## Signature
@@ -55,6 +57,7 @@ const text: string = await runPrompt(sessionId, options)
 | `model` | `{ provider, modelId }` | auto (cheapest) | Model to use; omit for cheapest available |
 | `tools` | `string[]` | `undefined` | Tool names to load; omit to disable all |
 | `includeContextFiles` | `boolean` | `true` | Whether Pi loads `AGENTS.md`/`CLAUDE.md` from parent directories. Set `false` to disable automatic context and provide your own via `systemPrompt`. |
+| `usagePurpose` | `'code_review' \| 'prompt_improvement' \| 'other_isolated'` | `'other_isolated'` for generic browser calls | Purpose for isolated usage attribution in the auxiliary ledger |
 
 ## Examples
 

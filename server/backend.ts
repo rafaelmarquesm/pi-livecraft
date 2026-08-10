@@ -26,6 +26,10 @@ import {
 } from './features/todos/todo-store.ts'
 import { rollupUsageRecords, UsageLedger } from './features/usage/usage-ledger.ts'
 import {
+  AuxiliaryUsageLedger,
+  isAuxiliaryUsagePurpose,
+} from './features/usage/auxiliary-usage-ledger.ts'
+import {
   readWorkspaceFile,
   resolveWorkspaceFilePath,
   WorkspaceFileError,
@@ -78,6 +82,7 @@ const distDirectory = fileURLToPath(new URL('../dist/', import.meta.url))
 const quotas = new QuotaService(manager)
 const caches = new SnapshotCaches()
 const usageLedger = new UsageLedger()
+const auxiliaryUsageLedger = new AuxiliaryUsageLedger()
 const validatedWorkBaselines = new Map<string, ValidatedWorkBaseline>()
 const managerRuntime = new ManagerRuntimeMonitor(manager, (status) => {
   broadcast({ kind: 'event', event: 'manager_status', sessionId: '', data: status })
@@ -246,7 +251,11 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
 
   if (method === 'GET' && url.pathname === '/api/usage') {
     const cwd = await resolveWorkingDirectory(url.searchParams.get('cwd') ?? '~/.pi')
-    sendJson(response, 200, rollupUsageRecords(await usageLedger.load(), cwd))
+    sendJson(
+      response,
+      200,
+      rollupUsageRecords(await usageLedger.load(), cwd, await auxiliaryUsageLedger.load()),
+    )
     return
   }
 
@@ -664,6 +673,7 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
       tools: Array.isArray(body.tools)
         ? body.tools.filter((t: unknown): t is string => typeof t === 'string')
         : undefined,
+      usagePurpose: isAuxiliaryUsagePurpose(body.usagePurpose) ? body.usagePurpose : undefined,
       includeContextFiles: typeof body.includeContextFiles === 'boolean'
         ? body.includeContextFiles
         : undefined,

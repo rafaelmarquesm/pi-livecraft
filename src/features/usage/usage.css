@@ -109,6 +109,15 @@
   color: var(--muted);
   font-size: 10px;
 }
+.usage-caveat {
+  margin: 10px 0 0;
+  border-radius: 8px;
+  padding: 8px 9px;
+  background: var(--surface-raised);
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
 .usage-error {
   margin: 14px 0 0;
   border-radius: 6px;
