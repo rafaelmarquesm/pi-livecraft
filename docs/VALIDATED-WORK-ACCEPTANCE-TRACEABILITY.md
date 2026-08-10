@@ -22,7 +22,7 @@ Specification: `docs/SPEC-VALIDATED-WORK-AND-QUALITY-LAB.md`
 | 6 | Review is isolated, read-only, bounded, structured, deduplicated | `test/code-review-{packet,output,store,protocol}.test.ts`; review API tests; review E2E triage/send preview | Packet and output limits pass, filesystem tools are unavailable, reports are structured/stored, unchanged diff is deduplicated, and sending requires preview | PASS |
 | 7 | UI shows plan, checks, findings, and cost without a false score | `e2e/quality.spec.ts`; component and backend fixture assertions | Plan approval, readiness text, campaign metrics, review findings, usage/cost fields, and no 0–100 aggregate score are rendered | PASS |
 | 8 | Usage attributes automation/review without guessed cost | `test/usage-ledger.test.ts`, `test/usage-ledger-burst.test.ts`, `test/usage-widget.test.ts` | Main, automated validation, code review, prompt improvement, isolated, and legacy usage reconcile without duplicate cost | PASS |
-| 9 | Performance budgets pass | `npm run bench:snapshot`, `npm run bench:memory`, `npm run bench:quality`, `npm run bench:validated-work`; packet/state/cache tests | Clean Node 24/Linux + Pi 0.84.1 passed deterministic gates: no-op p95 0.0000ms; cold extraction 1.541ms; incremental p95 2.518ms; summary 401B; full state 124,674B; review packet 98,048B; snapshot cold 1217.6ms/warm 18.8ms; memory delta +1.6MiB. Real offline Pi PSS was measured for 1/3/10 sessions. Browser React commit timing and retained V8 size per quality state remain unsupported | PARTIAL |
+| 9 | Performance budgets pass | `npm run bench:snapshot`, `npm run bench:memory`, `npm run bench:quality`, `npm run bench:validated-work`, `npm run bench:quality-ui`; packet/state/cache tests | Clean Node 24/Linux + Pi 0.84.1 passed deterministic gates: no-op p95 0.0000ms; cold extraction 1.541ms; incremental p95 2.518ms; summary 401B; full state 124,674B; review packet 98,048B; snapshot cold 1217.6ms/warm 18.8ms; memory delta +1.6MiB. Real offline Pi PSS was measured for 1/3/10 sessions. Real browser React Profiler measured 200 QualityWidget update commits at p95 2.50ms against the <16ms budget. Retained V8 size per active quality state remains unsupported | PARTIAL |
 | 10 | E2E is provider-independent | `npm run test:e2e` | 34 Playwright tests passed using seeded routes/state and no paid provider | PASS |
 | 11 | A/B campaigns produce reproducible artifacts and invalidity gates | `npm run eval:quality:offline`, `npm run bench:quality`, quality campaign/validity/statistics tests | Deterministic fake campaign emits raw JSON/Markdown, fingerprints, invalid reasons, pass@1/pass@k, Wilson interval, paired deltas, cost, time, and small-sample guards | PASS |
 | 12 | A published standard-vs-validated campaign with k>=3 exists before default promotion | Manual `.github/workflows/agent-quality.yml` plus external credentials/budget | Offline k=3 smoke ran, but no real paid 18-valid-trial campaign was authorized or published. Default remains `standard` and `validated` remains Experimental | BLOCKED |
@@ -78,11 +78,12 @@ All twelve provider-independent journeys required by section 14.4 now have direc
 | `npm run bench:quality` | PASS; deterministic k=3 fake comparison and complete artifacts |
 | `npm run eval:quality:offline` | PASS; 15/15 focused offline checks |
 | `npm run bench:validated-work` | PASS on Node 24/Linux + Pi 0.84.1; all deterministic gates passed. Real offline Pi PSS/session: 115.9 MiB (1), 106.4 MiB (3), 100.8 MiB (10) |
+| `npm run bench:quality-ui` | PASS; 200 real-browser QualityWidget update commits, p95 2.50 ms against <16 ms budget. Instrumentation is benchmark-only |
 
 ## Remaining acceptance work
 
 1. Run and publish the real paid `standard` vs `validated` campaign with at least 18 valid trials, after explicit credentials and budget approval.
 2. Observe hosted CI after pushing the commit series.
-3. Add browser React profiler instrumentation for UI quality update commit p95 and a defensible retained-size method for memory per active quality state. Provider-backed token delta and review latency remain part of the paid rollout rather than this deterministic matrix.
+3. Add a defensible retained-size method for memory per active quality state. Provider-backed token delta and review latency remain part of the paid rollout rather than this deterministic matrix.
 
 No default promotion is permitted until item 1 satisfies the promotion gates. The current safe state is `standard` by default with `validated` marked Experimental.
