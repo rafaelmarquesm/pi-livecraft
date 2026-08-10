@@ -177,6 +177,20 @@ test('models, commands and prompt templates are fetched once per session and aft
   assert.ok(Array.isArray(rebuilt.promptTemplates))
 })
 
+test('refreshState immediately reconciles one get_state after a preference command', async () => {
+  const manager = new FakeManager()
+  manager.fullEntryResponses.push({ success: true, data: { entries: fullList, leafId: 'b' } })
+  const caches = new SnapshotCaches()
+  const cache = await caches.refresh(manager, 'session-1')
+  const callsAfterFirst = manager.calls.length
+  manager.state = { success: true, data: { thinkingLevel: 'max' } }
+
+  await caches.refreshState(manager, 'session-1')
+
+  assert.deepEqual(manager.calls.slice(callsAfterFirst), [{ type: 'get_state' }])
+  assert.deepEqual(cache.state, { thinkingLevel: 'max' })
+})
+
 test('refreshStateStats issues exactly two commands on a warm cache', async () => {
   const manager = new FakeManager()
   manager.fullEntryResponses.push({ success: true, data: { entries: fullList, leafId: 'b' } })

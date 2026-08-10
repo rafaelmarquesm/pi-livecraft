@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Tooltip } from '../../components/Tooltip.tsx'
-import { getUsage, type UsageSnapshot } from '../../api.ts'
+import { getUsage, type UsageSnapshot, type UsageTotals } from '../../api.ts'
 import { formatTokens, formatTurnCost } from '../conversation/message-usage.ts'
 import { lastUsageDays, usageBarHeight, usageDayLabel, usageStatsParts } from './usage-display.ts'
 
@@ -155,6 +155,30 @@ function UsageSummary({ snapshot }: { snapshot: UsageSnapshot }) {
           <span>{usageDayLabel(days[days.length - 1].day)}</span>
         </div>
       </section>
+      {snapshot.byProvider.length > 0 && (
+        <section className='usage-models' aria-label='Usage by provider'>
+          <h2>By provider</h2>
+          <ul>
+            {snapshot
+              .byProvider
+              .map((entry) => (
+                <li key={entry.provider}>
+                  <span className='usage-model-name'>
+                    {entry
+                      .provider}
+                  </span>
+                  <b>
+                    {formatTurnCost(
+                      entry
+                        .cost,
+                    )}
+                  </b>
+                  <small>{usageBucketDetails(entry)}</small>
+                </li>
+              ))}
+          </ul>
+        </section>
+      )}
       {snapshot.byModel.length > 0 && (
         <section className='usage-models' aria-label='Usage by model'>
           <h2>By model</h2>
@@ -163,16 +187,20 @@ function UsageSummary({ snapshot }: { snapshot: UsageSnapshot }) {
               <li key={entry.model}>
                 <span className='usage-model-name'>{entry.model}</span>
                 <b>{formatTurnCost(entry.cost)}</b>
-                <small>
-                  {formatTokens(entry.totalTokens)} tokens · {entry.records} record
-                  {entry.records === 1 ? '' : 's'}
-                </small>
+                <small>{usageBucketDetails(entry)}</small>
               </li>
             ))}
           </ul>
         </section>
       )}
     </>
+  )
+}
+
+function usageBucketDetails(entry: UsageTotals): string {
+  const records = `${entry.records} record${entry.records === 1 ? '' : 's'}`
+  return [`${formatTokens(entry.totalTokens)} tokens`, records, ...usageStatsParts(entry)].join(
+    ' · ',
   )
 }
 

@@ -74,6 +74,19 @@ export class SnapshotCache {
     return operation
   }
 
+  /** Refreshes state only after a command that mutates model/session preferences. */
+  refreshState(client: SnapshotCommandClient, sessionId: string): Promise<void> {
+    const operation = this.#queue.then(async () => {
+      if (!this.#initialized) {
+        await this.#buildFullCache(client, sessionId)
+        return
+      }
+      this.state = objectData(await this.#command(client, sessionId, { type: 'get_state' }))
+    })
+    this.#queue = operation.catch(() => undefined)
+    return operation
+  }
+
   /** Refreshes state and stats only, for background reconciliation after Pi events. */
   refreshStateStats(client: SnapshotCommandClient, sessionId: string): Promise<void> {
     const operation = this.#queue.then(async () => {
@@ -161,6 +174,10 @@ export class SnapshotCaches {
     const cache = this.#cacheFor(sessionId)
     await cache.refresh(client, sessionId, opts)
     return cache
+  }
+
+  refreshState(client: SnapshotCommandClient, sessionId: string): Promise<void> {
+    return this.#cacheFor(sessionId).refreshState(client, sessionId)
   }
 
   refreshStateStats(client: SnapshotCommandClient, sessionId: string): Promise<void> {

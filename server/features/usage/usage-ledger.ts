@@ -33,6 +33,8 @@ export interface UsageRecord {
    * field existed — such records are simply excluded from tok/s averages.
    */
   turnMs?: number
+  /** Provider that produced the usage, when the entry reports one (assistant messages). */
+  provider?: string
   /** Model that produced the usage, when the entry reports one (assistant messages). */
   model?: string
   /** Billed cost in USD from `usage.cost.total`. */
@@ -75,6 +77,8 @@ export interface UsageRollup {
   totals: UsageAggregate
   /** Aggregates bucketed by UTC day (ISO date), most recent first. */
   byDay: Array<{ day: string } & UsageAggregate>
+  /** Aggregates bucketed by provider, alphabetical; missing providers bucket as 'unknown'. */
+  byProvider: Array<{ provider: string } & UsageAggregate>
   /** Aggregates bucketed by model, alphabetical; records without a model bucket as 'unknown'. */
   byModel: Array<{ model: string } & UsageAggregate>
 }
@@ -124,6 +128,7 @@ export function usageRecordsForEntries(entries: JsonObject[]): UsageEntryUsage[]
       entryId: entry.id,
       timestamp: new Date(timestampMs).toISOString(),
       turnMs,
+      provider: usage.provider,
       model: usage.model,
       cost: usage.cost,
       totalTokens: usage.totalTokens,
@@ -154,10 +159,12 @@ export function rollupUsageRecords(records: UsageRecord[], cwd: string): UsageRo
   const scoped = records.filter((record) => record.cwd === cwd)
   const totals = emptyCounters()
   const byDay = new Map<string, AggregateCounters>()
+  const byProvider = new Map<string, AggregateCounters>()
   const byModel = new Map<string, AggregateCounters>()
   for (const record of scoped) {
     mergeRecord(totals, record)
     accumulate(byDay, record.timestamp.slice(0, 10), record)
+    accumulate(byProvider, record.provider ?? 'unknown', record)
     accumulate(byModel, record.model ?? 'unknown', record)
   }
   return {
@@ -166,6 +173,9 @@ export function rollupUsageRecords(records: UsageRecord[], cwd: string): UsageRo
     byDay: [...byDay.entries()]
       .map(([day, counters]) => ({ day, ...toAggregate(counters) }))
       .sort((a, b) => b.day.localeCompare(a.day)),
+    byProvider: [...byProvider.entries()]
+      .map(([provider, counters]) => ({ provider, ...toAggregate(counters) }))
+      .sort((a, b) => a.provider.localeCompare(b.provider)),
     byModel: [...byModel.entries()]
       .map(([model, counters]) => ({ model, ...toAggregate(counters) }))
       .sort((a, b) => a.model.localeCompare(b.model)),
@@ -226,24 +236,34 @@ export class UsageLedger {
       throw new Error('Invalid working directory')
     const operation = this.#queue.then(async () => {
       const content = await readStoreText(this.#path)
-      const existing = parseUsageStore(content)
+      let enriched = false
+      const identityByEntryId = new Map(
+        usageRecordsForEntries(entries).map((record) => [record.entryId, record]),
+      )
+      const existing = parseUsageStore(content).map((record) => {
+        if (record.sessionId !== sessionId) return record
+        const identity = identityByEntryId.get(record.entryId)
+        if (!identity) return record
+        const provider = record.provider ?? identity.provider
+        const model = record.model ?? identity.model
+        if (provider === record.provider && model === record.model) return record
+        enriched = true
+        return { ...record, provider, model }
+      })
       const sessionRecords = existing.filter((record) => record.sessionId === sessionId)
       const seen = new Set(sessionRecords.map((record) => record.entryId))
       const cursor = this.#cursors.get(sessionId) ?? lastEntryIdOf(sessionRecords)
       const fresh = entriesAfterCursor(entries, cursor)
       const records = usageRecordsForEntries(fresh).filter((record) => !seen.has(record.entryId))
-      if (records.length === 0) {
+      if (records.length === 0 && !enriched) {
         this.#cursors.set(sessionId, cursor)
         return
       }
-      const lines = records.map((record) => JSON.stringify({ ...record, sessionId, cwd }))
+      const appended = records.map((record): UsageRecord => ({ ...record, sessionId, cwd }))
+      const lines = [...existing, ...appended].map((record) => JSON.stringify(record))
       const temporaryPath = `${this.#path}.${process.pid}.tmp`
       await mkdir(dirname(this.#path), { recursive: true })
-      await writeFile(
-        temporaryPath,
-        stripPartialTrailingLine(content) + lines.join('\n') + '\n',
-        { mode: 0o600 },
-      )
+      await writeFile(temporaryPath, lines.join('\n') + '\n', { mode: 0o600 })
       await rename(temporaryPath, this.#path)
       const advanced = advanceEntryCursor({ lastEntryId: cursor, leafId: null }, fresh, null)
       this.#cursors.set(sessionId, advanced.lastEntryId)
@@ -265,6 +285,7 @@ interface UsageCounters {
   output: number
   cacheRead: number
   cacheWrite: number
+  provider?: string
   model?: string
 }
 
@@ -273,10 +294,9 @@ function usageOfEntry(entry: JsonObject): UsageCounters | null {
     if (entry.message.role === 'assistant') {
       const usage = usageCounters(entry.message.usage)
       if (usage === null) return null
-      const model = typeof entry.message.model === 'string' && entry.message.model.length > 0
-        ? entry.message.model
-        : undefined
-      return model === undefined ? usage : { ...usage, model }
+      const provider = optionalIdentifier(entry.message.provider)
+      const model = optionalIdentifier(entry.message.model)
+      return { ...usage, provider, model }
     }
     if (entry.message.role === 'toolResult') return usageCounters(entry.message.usage)
     return null
@@ -322,10 +342,7 @@ function isUsageRecord(value: unknown): value is UsageRecord {
   if (typeof value.cwd !== 'string' || value.cwd.length === 0 || value.cwd.length > 2000)
     return false
   if (typeof value.timestamp !== 'string' || Number.isNaN(Date.parse(value.timestamp))) return false
-  if (
-    value.model !== undefined && (typeof value.model !== 'string' || value.model.length === 0
-      || value.model.length > 200)
-  ) return false
+  if (!isOptionalIdentifier(value.provider) || !isOptionalIdentifier(value.model)) return false
   if (value.turnMs !== undefined && (!isFiniteNumber(value.turnMs) || value.turnMs < 0))
     return false
   return ['cost', 'totalTokens', 'input', 'output', 'cacheRead', 'cacheWrite']
@@ -341,13 +358,6 @@ function entriesAfterCursor(entries: JsonObject[], lastEntryId: string | null): 
 
 function lastEntryIdOf(records: UsageRecord[]): string | null {
   return records.length === 0 ? null : records[records.length - 1].entryId
-}
-
-/** Drops a trailing partial line (interrupted append) so the next write continues cleanly. */
-function stripPartialTrailingLine(content: string): string {
-  if (content.endsWith('\n')) return content
-  const lastNewline = content.lastIndexOf('\n')
-  return lastNewline >= 0 ? content.slice(0, lastNewline + 1) : ''
 }
 
 /** Running sums behind one aggregate; derived metrics are computed on output. */
@@ -423,6 +433,14 @@ async function readStoreText(path: string): Promise<string> {
     if (isNotFound(error)) return ''
     throw error
   }
+}
+
+function optionalIdentifier(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 && value.length <= 200 ? value : undefined
+}
+
+function isOptionalIdentifier(value: unknown): boolean {
+  return value === undefined || optionalIdentifier(value) !== undefined
 }
 
 function isFiniteNumber(value: unknown): value is number {

@@ -49,7 +49,10 @@ The agent, model, thinking, and prompt dropdowns each live in `selects/` as stan
 components. `ComposerSelect` is the generic Radix Select wrapper they all use.
 Each select encapsulates its own option derivation and `onValueChange` logic.
 `onCommand()` sends the corresponding RPC command (`set_model`,
-`set_thinking_level`) to Pi. `PromptSelect` previews and inserts templates, and saves the
+`set_thinking_level`) to Pi. State-mutating commands are reconciled immediately through a cached
+`get_state` refresh before the command response completes; a warm entries-only snapshot would
+otherwise leave Model/Thinking displaying the old value until the next prompt settles.
+`PromptSelect` previews and inserts templates, and saves the
 current draft through `onSavePrompt()`.
 
 ## Draft persistence

@@ -39,6 +39,14 @@ test.describe('primary controls', () => {
     await page.getByRole('combobox', { name: 'Model' }).click()
     await expect(page.getByRole('option', { name: 'GPT-5.4', exact: true })).toBeVisible()
     await page.keyboard.press('Escape')
+
+    // Preference commands must reconcile get_state immediately; previously
+    // the warm snapshot cache updated only after the next prompt settled.
+    const thinking = page.getByRole('combobox', { name: 'Thinking level' })
+    const target = (await thinking.textContent())?.includes('Max') ? 'Low' : 'Max'
+    await thinking.click()
+    await page.getByRole('option', { name: target, exact: true }).click()
+    await expect(thinking).toContainText(target)
   })
 
   test('quota and usage rail buttons expose distinct panels and inference metrics', async ({ page }) => {
@@ -56,6 +64,13 @@ test.describe('primary controls', () => {
             tokensPerSecond: 12.4,
           },
           byDay: [],
+          byProvider: [{
+            provider: 'deepseek',
+            cost: 0.3,
+            totalTokens: 1_200,
+            records: 1,
+            cacheHitRate: 0.5,
+          }],
           byModel: [],
         },
       })
@@ -75,6 +90,9 @@ test.describe('primary controls', () => {
     await expect(metrics).toContainText('$1.20/1k out')
     await expect(metrics).toContainText('4:1 in:out')
     await expect(metrics).toContainText('12 tok/s')
+    const providers = tools.getByRole('region', { name: 'Usage by provider' })
+    await expect(providers).toContainText('deepseek')
+    await expect(providers).toContainText('cache 50%')
 
     // Exercise the dollar rail itself, including collapse and direct reopen.
     await tools.getByRole('button', { name: 'Collapse usage panel' }).click()

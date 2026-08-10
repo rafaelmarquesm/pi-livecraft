@@ -372,11 +372,20 @@ export interface UsageTotals {
   cost: number
   totalTokens: number
   records: number
+  cacheHitRate?: number
+  costPer1kOutput?: number
+  inputOutputRatio?: number
+  tokensPerSecond?: number
 }
 
 /** One UTC day of aggregated usage from GET /api/usage (most recent first). */
 export interface UsageDay extends UsageTotals {
   day: string
+}
+
+/** Usage aggregated by provider; older/provider-less records bucket as 'unknown'. */
+export interface UsageProvider extends UsageTotals {
+  provider: string
 }
 
 /** Usage aggregated by model; records without a model bucket as 'unknown'. */
@@ -389,6 +398,7 @@ export interface UsageSnapshot {
   cwd: string
   totals: UsageTotals
   byDay: UsageDay[]
+  byProvider: UsageProvider[]
   byModel: UsageModel[]
 }
 

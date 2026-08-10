@@ -50,6 +50,7 @@ import {
 } from './features/sessions/session-meta-store.ts'
 import type { SessionMeta, SessionSummary } from '../shared/types.ts'
 import { detectPiCapabilities } from './pi-capabilities.ts'
+import { piCommandMutatesState } from './pi-command-state.ts'
 import { externalWorkspacePath, openPath } from './system-integration.ts'
 import { expandHomePath } from './home-path.ts'
 import type {
@@ -626,10 +627,13 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
     const command = await readJsonBody(request)
     if (typeof command.type !== 'string' || command.type.length > 100)
       throw new HttpError(400, 'A valid Pi command type is required')
+    const sessionId = decodeURIComponent(commandMatch[1])
     const data = await manager.request(
-      { action: 'command', sessionId: decodeURIComponent(commandMatch[1]), command },
+      { action: 'command', sessionId, command },
       10 * 60_000,
     )
+    if (piCommandMutatesState(command) && (!isObject(data) || data.success !== false))
+      await caches.refreshState(manager, sessionId)
     sendJson(response, 200, data)
     return
   }

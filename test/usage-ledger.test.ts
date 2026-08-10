@@ -57,6 +57,7 @@ test('extracts assistant usage keyed by entry id, costs verbatim from usage.cost
   assert.equal(records.length, 2)
   assert.deepEqual(records.map((record) => record.entryId), ['22222222', '44444444'])
   assert.equal(records[0].cost, 0.0099)
+  assert.equal(records[0].provider, 'anthropic')
   assert.equal(records[0].model, 'claude-sonnet-4-5')
   assert.equal(records[0].totalTokens, 2340)
   assert.equal(records[0].timestamp, '2026-08-08T10:00:05.000Z')
@@ -181,6 +182,24 @@ test('T-LEDGER-2: reprocessing the same entries never duplicates records', async
   }
 })
 
+test('backfills provider and model identity for legacy records without duplicating usage', async () => {
+  const { directory, path } = await temporaryStore()
+  try {
+    const entries = await fixtureEntries('fixture-short.jsonl')
+    await new UsageLedger(path).append('sess', '/workspaces/demo', entries)
+    const legacy = (await readFile(path, 'utf8')).replaceAll('"provider":"anthropic",', '')
+    await writeFile(path, legacy)
+
+    await new UsageLedger(path).append('sess', '/workspaces/demo', entries)
+
+    const records = parseUsageStore(await readFile(path, 'utf8'))
+    assert.equal(records.length, 2)
+    assert.deepEqual(records.map((record) => record.provider), ['anthropic', 'anthropic'])
+  } finally {
+    await rm(directory, { force: true, recursive: true })
+  }
+})
+
 test('T-LEDGER-3: an interrupted cursor resumes without double counting', async () => {
   const { directory, path } = await temporaryStore()
   try {
@@ -292,13 +311,14 @@ test('rejects invalid session or workspace arguments', async () => {
   }
 })
 
-test('rolls usage up by UTC day and model for one workspace', () => {
+test('rolls usage up by UTC day, provider, and model for one workspace', () => {
   const records: UsageRecord[] = [
     {
       entryId: '11111111',
       sessionId: 's1',
       cwd: '/workspaces/demo',
       timestamp: '2026-08-08T10:00:05.000Z',
+      provider: 'anthropic',
       model: 'claude-sonnet-4-5',
       cost: 0.0099,
       totalTokens: 2340,
@@ -312,6 +332,7 @@ test('rolls usage up by UTC day and model for one workspace', () => {
       sessionId: 's1',
       cwd: '/workspaces/demo',
       timestamp: '2026-08-09T10:00:05.000Z',
+      provider: 'anthropic',
       model: 'claude-opus-4-1',
       cost: 0.049,
       totalTokens: 2590,
@@ -377,6 +398,24 @@ test('rolls usage up by UTC day and model for one workspace', () => {
       inputOutputRatio: 1300 / 340,
     },
   ])
+  assert.deepEqual(rollup.byProvider, [
+    {
+      provider: 'anthropic',
+      cost: 0.0099 + 0.049,
+      totalTokens: 2340 + 2590,
+      records: 2,
+      cacheHitRate: 1200 / 4500,
+      costPer1kOutput: (0.0099 + 0.049) / (430 / 1000),
+      inputOutputRatio: 3300 / 430,
+    },
+    {
+      provider: 'unknown',
+      cost: 0.005,
+      totalTokens: 100,
+      records: 1,
+      cacheHitRate: 0,
+    },
+  ])
   assert.deepEqual(rollup.byModel, [
     {
       model: 'claude-opus-4-1',
@@ -407,6 +446,9 @@ test('rolls usage up by UTC day and model for one workspace', () => {
   ])
   const other = rollupUsageRecords(records, '/workspaces/other')
   assert.deepEqual(other.totals, { cost: 0.01, totalTokens: 200, records: 1, cacheHitRate: 0 })
+  assert.deepEqual(other.byProvider, [
+    { provider: 'unknown', cost: 0.01, totalTokens: 200, records: 1, cacheHitRate: 0 },
+  ])
   assert.deepEqual(other.byModel, [
     { model: 'unknown', cost: 0.01, totalTokens: 200, records: 1, cacheHitRate: 0 },
   ])

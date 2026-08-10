@@ -26,6 +26,7 @@ interface UsageRecord {
   timestamp: string  // entry timestamp, ISO 8601 UTC
   turnMs?: number    // approximate generation duration (Backlog B): delta to the
                      // previous entry's timestamp; optional — old records lack it
+  provider?: string  // provider reported by assistant messages; optional for legacy/tool records
   model?: string     // model that produced the usage (assistant messages)
   cost: number       // USD, verbatim from usage.cost.total — never recomputed (E8)
   totalTokens: number
@@ -47,7 +48,10 @@ Mirror exactly what the Pi counts in `get_session_stats`:
 - `compaction` and `branchSummary` entries carrying top-level `usage`
 
 Entries without billable usage, without a stable 8-hex id, or without a usable
-timestamp are skipped. There is no local price table (E8).
+timestamp are skipped. There is no local price table (E8). Provider/model identity is copied only
+when the entry reports it; tool, compaction, and legacy records remain `unknown` rather than being
+guessed. On the next settle of a legacy session, the ledger backfills missing identity by matching
+its stable `entryId` against that session's real entries, atomically and without duplicating cost.
 
 `turnMs` is derived at extraction (Backlog B): the delta between the entry's
 timestamp and the previous entry's timestamp (entries arrive in append order;
@@ -76,12 +80,13 @@ workspace. Response shape:
     "tokensPerSecond": 12.4
   },
   "byDay": [{ "day": "2026-08-08", "cost": 1.2155, "totalTokens": 38370, "records": 4 }],
+  "byProvider": [{ "provider": "anthropic", "cost": 0.0955, "totalTokens": 3630, "records": 2 }],
   "byModel": [{ "model": "claude-opus-4-1", "cost": 0.0955, "totalTokens": 3630, "records": 2 }]
 }
 ```
 
 - `byDay` bucketed by UTC day (`timestamp.slice(0, 10)`), most recent first.
-- `byModel` alphabetical; records without a model bucket as `"unknown"`.
+- `byProvider` and `byModel` alphabetical; records without identity bucket as `"unknown"`.
 - Every aggregate (totals, each day, each model) carries derived inference
   metrics (Backlog B), all optional so older consumers keep working:
   - `cacheHitRate` — `cacheRead / (input + cacheRead)` in 0..1; `0` when the

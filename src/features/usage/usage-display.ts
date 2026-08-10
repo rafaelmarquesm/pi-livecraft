@@ -1,25 +1,8 @@
 import type { UsageDay, UsageTotals } from '../../api.ts'
 import { formatTurnCost } from '../conversation/message-usage.ts'
 
-/**
- * Derived inference metrics added to every rollup aggregate by Backlog B
- * (see `UsageAggregate` in server/features/usage/usage-ledger.ts). The
- * `UsageTotals` type in api.ts does not declare them yet — they arrive as
- * optional fields in the GET /api/usage payload, so reading them through
- * this intersection is type-safe on both ends.
- */
-export interface UsageDerivedTotals {
-  /** Cache hit rate in 0..1 (`cacheRead / (input + cacheRead)`); 0 when nothing was billed. */
-  cacheHitRate?: number
-  /** Cost per 1k output tokens in USD; absent for buckets without output. */
-  costPer1kOutput?: number
-  /** input:output token ratio; absent for buckets without output. */
-  inputOutputRatio?: number
-  /** Mean generation throughput in output tokens/s; absent when no record carries turnMs. */
-  tokensPerSecond?: number
-}
-
-export type UsageStatsSource = UsageTotals & UsageDerivedTotals
+/** Totals include optional inference metrics from every backend rollup bucket. */
+export type UsageStatsSource = UsageTotals
 
 /**
  * Height of a day bar as a percentage of the tallest day in the chart window.
