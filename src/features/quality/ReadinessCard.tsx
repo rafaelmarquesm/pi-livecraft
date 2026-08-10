@@ -43,6 +43,18 @@ export function ReadinessCard({
           <dt>Checks</dt>
           <dd>{formatCheckCounts(summary.counts.checks)}</dd>
         </div>
+        <div>
+          <dt>Automation turns</dt>
+          <dd>{summary.automation.extraTurns}/{summary.automation.maxExtraTurns}</dd>
+        </div>
+        <div>
+          <dt>Budget status</dt>
+          <dd>
+            {summary.readiness === 'budget_stopped'
+              ? 'Stopped at the configured budget'
+              : 'Within preflight limits'}
+          </dd>
+        </div>
       </dl>
       {summary.blockers.length > 0 && (
         <ul className='quality-blockers'>

@@ -135,8 +135,9 @@ export interface ValidatedWorkConfigEntry {
 }
 
 export interface ValidatedWorkCommandArgs {
-  action: 'configure' | 'approve' | 'status'
+  action: 'configure' | 'approve' | 'status' | 'abort_automation'
   mode?: ValidatedWorkMode
+  paused?: boolean
   maxExtraTurns?: number
   maxAttributedCostUsd?: number
 }
@@ -178,19 +179,28 @@ export function parseCommandArgs(args: string): ValidatedWorkCommandArgs {
     throw new Error('Expected JSON args, a mode, or no args for /livecraft-validated-work.')
   }
   if (!isObject(value)) throw new Error('Validated work config args must be an object.')
-  const allowed = new Set(['action', 'mode', 'maxExtraTurns', 'maxAttributedCostUsd'])
+  const allowed = new Set(['action', 'mode', 'paused', 'maxExtraTurns', 'maxAttributedCostUsd'])
   for (const key of Object.keys(value)) {
     if (!allowed.has(key)) throw new Error(`Validated work config field is not allowed: ${key}`)
   }
   const action = value.action === undefined ? 'configure' : value.action
-  if (action !== 'configure' && action !== 'approve' && action !== 'status') {
-    throw new Error('Validated work action must be configure, approve, or status.')
+  if (
+    action !== 'configure' && action !== 'approve' && action !== 'status'
+    && action !== 'abort_automation'
+  ) {
+    throw new Error(
+      'Validated work action must be configure, approve, abort_automation, or status.',
+    )
   }
   const parsed: ValidatedWorkCommandArgs = { action }
   if (Object.hasOwn(value, 'mode')) {
     if (!isMode(value.mode))
       throw new Error('Validated work mode must be standard, plan, or validated.')
     parsed.mode = value.mode
+  }
+  if (Object.hasOwn(value, 'paused')) {
+    if (typeof value.paused !== 'boolean') throw new Error('paused must be a boolean.')
+    parsed.paused = value.paused
   }
   if (Object.hasOwn(value, 'maxExtraTurns')) {
     if (!isBoundedInteger(value.maxExtraTurns, 0, 5)) {
@@ -204,8 +214,11 @@ export function parseCommandArgs(args: string): ValidatedWorkCommandArgs {
     }
     parsed.maxAttributedCostUsd = value.maxAttributedCostUsd
   }
-  if (parsed.action === 'configure' && !parsed.mode) {
-    throw new Error('Configure requires a validated work mode.')
+  if (
+    parsed.action === 'configure' && !parsed.mode && parsed.paused === undefined
+    && parsed.maxExtraTurns === undefined && parsed.maxAttributedCostUsd === undefined
+  ) {
+    throw new Error('Configure requires a validated work mode, paused, or limits.')
   }
   return parsed
 }

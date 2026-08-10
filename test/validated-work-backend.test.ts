@@ -42,7 +42,11 @@ test('validated-work config parser maps approval and cancel actions to fixed pri
   )
   assert.equal(
     parseValidatedWorkConfigUpdate({ action: 'abort_automation' }).commandArgs,
-    '{"mode":"standard"}',
+    '{"action":"abort_automation"}',
+  )
+  assert.equal(
+    parseValidatedWorkConfigUpdate({ paused: true }).commandArgs,
+    '{"paused":true}',
   )
 })
 

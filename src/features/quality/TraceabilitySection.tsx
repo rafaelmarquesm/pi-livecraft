@@ -24,14 +24,21 @@ export function TraceabilitySection({ state }: { state: ValidatedWorkStateV1 | n
                 <th>Requirement</th>
                 <th>Checks</th>
                 <th>Evidence</th>
+                <th>State</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
                 <tr key={row.requirementId}>
-                  <th scope='row'>{row.requirementId}</th>
-                  <td>{row.checks}</td>
-                  <td>{row.evidence}</td>
+                  <th scope='row'>
+                    {row.requirementId}
+                    <small>{row.requirement}</small>
+                  </th>
+                  <td>{row.checks.length > 0 ? row.checks.join(', ') : 'No mapped check'}</td>
+                  <td>
+                    {row.evidence.length > 0 ? row.evidence.join(', ') : 'No linked evidence'}
+                  </td>
+                  <td>{row.state}</td>
                 </tr>
               ))}
             </tbody>

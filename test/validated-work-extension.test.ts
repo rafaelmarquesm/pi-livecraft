@@ -8,17 +8,28 @@ import {
 } from '../pi-extensions/validated-work/gates.ts'
 import {
   applyValidatedWorkAction,
+  applyObservedEvidenceBatch,
   buildSummary,
   createInitialState,
+  deriveReadiness,
   defaultConfig,
+  incrementExtraTurn,
+  recordBudgetStop,
   reconstructValidatedWork,
+  setPausedState,
   summaryJson,
+  validatedWorkEvidenceBatchType,
+  validatedWorkEvidenceBatchVersion,
   validatedWorkConfigType,
   validatedWorkConfigVersion,
   validatedWorkToolName,
   type ValidatedWorkConfigEntry,
 } from '../pi-extensions/validated-work/state.ts'
 import type { ValidatedWorkStateV1 } from '../shared/validated-work.ts'
+import {
+  classifyToolEvidence,
+  sanitizeObservationText,
+} from '../pi-extensions/validated-work/evidence.ts'
 
 test('default validated work state is inactive and has no summary contract overhead', () => {
   const config = defaultConfig(100)
@@ -156,6 +167,106 @@ test('approval config reconstructs execution and bounded summary stays below two
   assert.ok(new TextEncoder().encode(summaryJson(noisy)).length <= 2_048)
 })
 
+test('observed evidence batches are sanitized, deduped, and recovered branch-aware', () => {
+  const state = plannedValidatedState()
+  const batch = {
+    protocol: validatedWorkEvidenceBatchType,
+    version: validatedWorkEvidenceBatchVersion,
+    cycleId: state.cycleId,
+    stateRevision: state.revision,
+    observedAt: 201,
+    evidence: [{
+      id: 'tool-call-1',
+      kind: 'observed_check' as const,
+      summary: sanitizeObservationText('bash: npm test password=hunter2'),
+      observedAt: 201,
+      toolCallId: 'call-1',
+      checkIds: [],
+      toolName: 'bash',
+      commandOrPath: 'npm test',
+      isError: false,
+    }],
+  }
+  const reconstructed = reconstructValidatedWork([
+    customEntry(config('validated', 100)),
+    toolResult(state),
+    { type: 'custom', customType: validatedWorkEvidenceBatchType, data: batch },
+    { type: 'custom', customType: validatedWorkEvidenceBatchType, data: batch },
+  ], 210)
+  assert.equal(reconstructed.state.evidence.length, 1)
+  assert.match(reconstructed.state.evidence[0]?.summary ?? '', /password=\[redacted\]/)
+  assert.equal(classifyToolEvidence('bash', false, 'npm run lint'), 'observed_check')
+})
+
+test('check evidence linking and confidence history gate readiness exactly', () => {
+  let state = plannedValidatedState()
+  state = applyObservedEvidenceBatch(state, [{
+    id: 'tool-call-1',
+    kind: 'observed_check',
+    summary: 'bash: npm test: passed',
+    observedAt: 201,
+    toolCallId: 'call-1',
+    checkIds: [],
+    toolName: 'bash',
+    isError: false,
+  }], 201)
+  state = applyValidatedWorkAction(state, {
+    action: 'link_evidence',
+    evidence: [{ ...state.evidence[0]!, checkIds: ['c1'] }],
+    checks: [{ id: 'c1', status: 'passed', evidenceIds: ['tool-call-1'] }],
+  }, 202)
+  state = applyValidatedWorkAction(state, {
+    action: 'update_items',
+    items: [{ id: 't1', status: 'completed', completionConfidence: 'validated' }],
+  }, 203)
+  assert.equal(state.confidenceHistory.at(-1)?.state, 'validated')
+  assert.equal(state.readiness, 'ready')
+})
+
+test('confidence spikes require review before ready', () => {
+  let state = plannedValidatedState()
+  state = applyObservedEvidenceBatch(state, [{
+    id: 'tool-call-1',
+    kind: 'observed_check',
+    summary: 'test passed',
+    observedAt: 201,
+    toolCallId: 'call-1',
+    checkIds: [],
+    toolName: 'bash',
+    isError: false,
+  }], 201)
+  state = applyValidatedWorkAction(state, {
+    action: 'link_evidence',
+    evidence: [{ ...state.evidence[0]!, checkIds: ['c1'] }],
+    checks: [{ id: 'c1', status: 'passed', evidenceIds: ['tool-call-1'] }],
+  }, 202)
+  state = applyValidatedWorkAction(state, {
+    action: 'update_items',
+    items: [{ id: 't1', status: 'completed', completionConfidence: 'verified' }],
+  }, 203)
+  assert.equal(state.readiness, 'needs_review')
+  assert.equal(state.readinessReasons[0]?.code, 'confidence-spike-unreviewed')
+})
+
+test('budget, pause, and no-progress stops block automation readiness', () => {
+  let state = plannedValidatedState()
+  state = incrementExtraTurn(state, 201)
+  state = incrementExtraTurn(state, 202)
+  state = deriveReadiness(state)
+  assert.equal(state.readiness, 'budget_stopped')
+  state = setPausedState(plannedValidatedState(), true, 203)
+  assert.equal(state.paused, true)
+  assert.equal(state.readinessReasons[0]?.code, 'automation-paused')
+  state = recordBudgetStop(
+    plannedValidatedState(),
+    'no-progress',
+    'Stopped because no progress was observed.',
+    204,
+  )
+  assert.equal(state.readiness, 'budget_stopped')
+  assert.equal(state.readinessReasons[0]?.code, 'no-progress')
+})
+
 function fakeTools(all: string[], active: string[]) {
   return {
     active: [...active],
@@ -201,4 +312,30 @@ function withManyReadinessReasons(state: ValidatedWorkStateV1): ValidatedWorkSta
       findingIds: [],
     })),
   }
+}
+
+function plannedValidatedState(): ValidatedWorkStateV1 {
+  return applyValidatedWorkAction(createInitialState('validated', 100), {
+    action: 'replace_plan',
+    userIntent: 'Ship validated lifecycle',
+    intentState: 'clear',
+    requirements: [{ id: 'r1', text: 'Run checks', source: 'explicit' }],
+    goals: [{ id: 'g1', title: 'Lifecycle', requirementIds: ['r1'], status: 'completed' }],
+    items: [{
+      id: 't1',
+      goalId: 'g1',
+      requirementIds: ['r1'],
+      text: 'Implement lifecycle',
+      status: 'in_progress',
+      confidence: 'plausible',
+    }],
+    checks: [{
+      id: 'c1',
+      requirementIds: ['r1'],
+      itemIds: ['t1'],
+      text: 'Focused test passes',
+      status: 'pending',
+      evidenceIds: [],
+    }],
+  }, 101)
 }

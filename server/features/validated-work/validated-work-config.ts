@@ -63,10 +63,13 @@ function privateCommandArgs(
   if (body.action === 'reset')
     return { args: canonicalJson({ mode: 'standard' }), mode: 'standard' }
   if (body.action === 'abort_automation')
-    return { args: canonicalJson({ mode: 'standard' }), mode: 'standard' }
+    return { args: canonicalJson({ action: 'abort_automation' }) }
   const targetMode = body.mode
-  if (!targetMode) throw new Error('mode or action is required')
-  const command: Record<string, unknown> = { mode: targetMode }
+  if (!targetMode && body.paused === undefined)
+    throw new Error('mode, paused, or action is required')
+  const command: Record<string, unknown> = {}
+  if (targetMode) command.mode = targetMode
+  if (body.paused !== undefined) command.paused = body.paused
   if (body.limits?.maxExtraTurns !== undefined) command.maxExtraTurns = body.limits.maxExtraTurns
   if (body.limits?.maxAttributedCostUsd !== undefined) {
     command.maxAttributedCostUsd = body.limits.maxAttributedCostUsd

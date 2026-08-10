@@ -33,9 +33,14 @@ test('setStatus stores sanitized text per key and clears on omission', () => {
 })
 
 test('reserved status keys never reach the status bar', () => {
-  assert.deepEqual(reservedStatusKeys, ['agent', 'pi-livecraft.quotas'])
+  assert.deepEqual(reservedStatusKeys, [
+    'agent',
+    'pi-livecraft.quotas',
+    'pi-livecraft.validated-work',
+  ])
   assert.equal(isReservedStatusKey('agent'), true)
   assert.equal(isReservedStatusKey('pi-livecraft.quotas'), true)
+  assert.equal(isReservedStatusKey('pi-livecraft.validated-work'), true)
   assert.equal(isReservedStatusKey('my-ext'), false)
   const state = applyExtensionUiRequest(
     createExtensionUiState(),

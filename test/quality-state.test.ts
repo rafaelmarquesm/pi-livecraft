@@ -48,7 +48,37 @@ test('requirement traceability counts checks and linked evidence per requirement
   assert.deepEqual(requirementTraceability(state), [{
     requirementId: 'r1',
     requirement: 'Do the thing',
-    checks: 1,
-    evidence: 1,
+    checks: ['c1'],
+    evidence: ['e1'],
+    state: 'Pending evidence',
   }])
+})
+
+test('requirement traceability lists untraced requirements first and exposes row state', () => {
+  const state = {
+    ...createInitialState('plan', 1),
+    requirements: [
+      { id: 'r1', text: 'Covered', source: 'explicit' as const },
+      { id: 'r2', text: 'Uncovered', source: 'explicit' as const },
+    ],
+    checks: [{
+      id: 'c1',
+      requirementIds: ['r1'],
+      itemIds: [],
+      text: 'Run focused test',
+      status: 'passed' as const,
+      evidenceIds: ['e1'],
+    }],
+    evidence: [{
+      id: 'e1',
+      kind: 'observed_check' as const,
+      summary: 'test passed',
+      observedAt: 2,
+      checkIds: ['c1'],
+    }],
+  }
+  assert.deepEqual(requirementTraceability(state).map((row) => [row.requirementId, row.state]), [
+    ['r2', 'Missing check'],
+    ['r1', 'Passed with evidence'],
+  ])
 })
