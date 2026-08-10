@@ -325,8 +325,9 @@ export default function registerValidatedWork(pi: ExtensionAPI): void {
     }
     const reason = state.readinessReasons[0]
     if (!reason) return
-    const fingerprint = `${state.cycleId}:${reason.code}:${state.revision}`
-    const progressed = state.revision !== lastProgressRevision
+    const progressRevision = nonAutomationRevision(state)
+    const fingerprint = `${state.cycleId}:${reason.code}:${progressRevision}`
+    const progressed = progressRevision !== lastProgressRevision
       || state.evidence.length !== lastProgressEvidenceCount
     if (fingerprint === lastFollowUpFingerprint || !progressed) {
       state = recordBudgetStop(
@@ -347,7 +348,7 @@ export default function registerValidatedWork(pi: ExtensionAPI): void {
     }
     appendAttribution(activeSyntheticTurn)
     state = incrementExtraTurn(state)
-    lastProgressRevision = state.revision
+    lastProgressRevision = progressRevision
     lastProgressEvidenceCount = state.evidence.length
     publishSummary(ctx)
     pi.sendMessage({
@@ -430,6 +431,10 @@ function followUpText(code: string, text: string): string {
   if (code === 'confidence-spike-unreviewed')
     return `Review the confidence spike and either justify it with evidence or lower confidence. ${text}`
   return `Address this Validated Work blocker, then update validated_work: ${text}`
+}
+
+function nonAutomationRevision(state: ValidatedWorkStateV1): number {
+  return Math.max(0, state.revision - state.automation.counters.extraTurns)
 }
 
 function resolveAttributionTarget(
