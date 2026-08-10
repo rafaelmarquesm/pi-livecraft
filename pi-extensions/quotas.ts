@@ -1,10 +1,16 @@
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent'
 import { isObject } from '../shared/is-object.ts'
-import { parseCopilotUsage, parseOpenAiUsage } from '../shared/quota-parsers.ts'
+import {
+  parseCopilotUsage,
+  parseDeepSeekBalance,
+  parseMoonshotBalance,
+  parseOpenAiUsage,
+} from '../shared/quota-parsers.ts'
 import { quotaRefreshAllowed } from '../shared/quota-refresh.ts'
 import type {
   CopilotQuotaWindow,
   OpenAiQuotaWindow,
+  ProviderBalance,
   QuotaProviderReport,
   QuotaReport,
 } from '../shared/types.ts'
@@ -46,13 +52,27 @@ export default function registerQuotas(pi: ExtensionAPI): void {
 }
 
 async function publishQuotaReport(ctx: ExtensionContext): Promise<QuotaReport> {
-  const [openai, copilot] = await Promise.all([fetchOpenAiQuotas(ctx), fetchCopilotQuotas(ctx)])
+  const [openai, copilot, deepseek, moonshot, moonshotCn] = await Promise.all([
+    fetchOpenAiQuotas(ctx),
+    fetchCopilotQuotas(ctx),
+    fetchDeepSeekBalance(ctx),
+    fetchMoonshotBalance(ctx, 'moonshotai', 'https://api.moonshot.ai/v1/users/me/balance', 'USD'),
+    fetchMoonshotBalance(
+      ctx,
+      'moonshotai-cn',
+      'https://api.moonshot.cn/v1/users/me/balance',
+      'CNY',
+    ),
+  ])
   const report: QuotaReport = {
     protocol: 'pi-livecraft.quotas',
-    version: 1,
+    version: 2,
     refreshedAt: Date.now(),
     openai,
     copilot,
+    deepseek,
+    moonshot,
+    moonshotCn,
   }
   ctx.ui.setStatus(statusKey, JSON.stringify(report))
   return report
@@ -102,6 +122,57 @@ async function fetchCopilotQuotas(
   } catch (error) {
     return failure(fetchError(error, 'Unable to fetch Copilot quotas.'))
   }
+}
+
+/** Uses the API key already resolved by Pi to read DeepSeek's official account balance. */
+async function fetchDeepSeekBalance(
+  ctx: ExtensionContext,
+): Promise<QuotaProviderReport<ProviderBalance>> {
+  try {
+    const token = await providerApiKey(ctx, 'deepseek')
+    if (!token) return { ok: true, data: [] }
+    const balances = parseDeepSeekBalance(
+      await fetchJson('https://api.deepseek.com/user/balance', {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      }),
+    )
+    return balances.length > 0
+      ? { ok: true, data: balances }
+      : failure('The DeepSeek balance response was not recognized.')
+  } catch (error) {
+    return failure(fetchError(error, 'Unable to fetch DeepSeek balance.'))
+  }
+}
+
+/** Reads one Moonshot regional account; international and China keys are independent. */
+async function fetchMoonshotBalance(
+  ctx: ExtensionContext,
+  provider: 'moonshotai' | 'moonshotai-cn',
+  url: string,
+  currency: 'USD' | 'CNY',
+): Promise<QuotaProviderReport<ProviderBalance>> {
+  try {
+    const token = await providerApiKey(ctx, provider)
+    if (!token) return { ok: true, data: [] }
+    const balances = parseMoonshotBalance(
+      await fetchJson(url, { Authorization: `Bearer ${token}`, Accept: 'application/json' }),
+      currency,
+    )
+    return balances.length > 0
+      ? { ok: true, data: balances }
+      : failure('The Moonshot balance response was not recognized.')
+  } catch (error) {
+    return failure(fetchError(error, 'Unable to fetch Moonshot balance.'))
+  }
+}
+
+async function providerApiKey(
+  ctx: ExtensionContext,
+  provider: string,
+): Promise<string | undefined> {
+  const auth = await ctx.modelRegistry.getProviderAuth(provider)
+  return auth?.auth.apiKey ?? stringField(await readCredential(ctx, provider), 'key')
 }
 
 async function fetchJson(url: string, headers: Record<string, string>): Promise<unknown> {

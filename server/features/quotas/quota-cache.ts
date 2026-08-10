@@ -3,6 +3,7 @@ import type {
   CopilotQuotaWindow,
   JsonObject,
   OpenAiQuotaWindow,
+  ProviderBalance,
   QuotaProviderReport,
   QuotaProviderSnapshot,
   QuotaReport,
@@ -15,12 +16,18 @@ const emptyProvider = <T>(): QuotaProviderSnapshot<T> => ({ data: [], stale: fal
 export class QuotaCache {
   #openai = emptyProvider<OpenAiQuotaWindow>()
   #copilot = emptyProvider<CopilotQuotaWindow>()
+  #deepseek = emptyProvider<ProviderBalance>()
+  #moonshot = emptyProvider<ProviderBalance>()
+  #moonshotCn = emptyProvider<ProviderBalance>()
   #refreshing = false
 
   snapshot(sessionRequired: boolean): QuotaSnapshot {
     return {
       openai: this.#openai,
       copilot: this.#copilot,
+      deepseek: this.#deepseek,
+      moonshot: this.#moonshot,
+      moonshotCn: this.#moonshotCn,
       refreshing: this.#refreshing,
       sessionRequired,
     }
@@ -48,6 +55,9 @@ export class QuotaCache {
     if (!report) return false
     this.#openai = mergeProvider(this.#openai, report.openai, report.refreshedAt)
     this.#copilot = mergeProvider(this.#copilot, report.copilot, report.refreshedAt)
+    this.#deepseek = mergeProvider(this.#deepseek, report.deepseek, report.refreshedAt)
+    this.#moonshot = mergeProvider(this.#moonshot, report.moonshot, report.refreshedAt)
+    this.#moonshotCn = mergeProvider(this.#moonshotCn, report.moonshotCn, report.refreshedAt)
     this.#refreshing = false
     return true
   }
@@ -65,18 +75,31 @@ function mergeProvider<T>(
 function parseQuotaReport(value: unknown): QuotaReport | undefined {
   const report = object(value)
   if (
-    report?.protocol !== 'pi-livecraft.quotas' || report.version !== 1
+    report?.protocol !== 'pi-livecraft.quotas' || (report.version !== 1 && report.version !== 2)
     || !finiteNumber(report.refreshedAt)
   ) return undefined
   const openai = parseProvider(report.openai, parseOpenAiWindow)
   const copilot = parseProvider(report.copilot, parseCopilotWindow)
-  if (!openai || !copilot) return undefined
+  const legacyBalance = { ok: true as const, data: [] as ProviderBalance[] }
+  const deepseek = report.version === 1
+    ? legacyBalance
+    : parseProvider(report.deepseek, parseProviderBalance)
+  const moonshot = report.version === 1
+    ? legacyBalance
+    : parseProvider(report.moonshot, parseProviderBalance)
+  const moonshotCn = report.version === 1
+    ? legacyBalance
+    : parseProvider(report.moonshotCn, parseProviderBalance)
+  if (!openai || !copilot || !deepseek || !moonshot || !moonshotCn) return undefined
   return {
     protocol: 'pi-livecraft.quotas',
-    version: 1,
+    version: 2,
     refreshedAt: report.refreshedAt,
     openai,
     copilot,
+    deepseek,
+    moonshot,
+    moonshotCn,
   }
 }
 
@@ -123,8 +146,34 @@ function parseCopilotWindow(value: unknown): CopilotQuotaWindow | undefined {
   }
 }
 
+function parseProviderBalance(value: unknown): ProviderBalance | undefined {
+  const balance = object(value)
+  if (
+    typeof balance?.currency !== 'string' || !/^[A-Z]{3,8}$/.test(balance.currency)
+    || !finiteNumber(balance.total)
+    || !optionalFiniteNumber(balance.cash)
+    || !optionalFiniteNumber(balance.voucher)
+    || !optionalFiniteNumber(balance.granted)
+    || !optionalFiniteNumber(balance.toppedUp)
+    || (balance.usable !== undefined && typeof balance.usable !== 'boolean')
+  ) return undefined
+  return {
+    currency: balance.currency,
+    total: balance.total,
+    ...(finiteNumber(balance.cash) ? { cash: balance.cash } : {}),
+    ...(finiteNumber(balance.voucher) ? { voucher: balance.voucher } : {}),
+    ...(finiteNumber(balance.granted) ? { granted: balance.granted } : {}),
+    ...(finiteNumber(balance.toppedUp) ? { toppedUp: balance.toppedUp } : {}),
+    ...(typeof balance.usable === 'boolean' ? { usable: balance.usable } : {}),
+  }
+}
+
 function object(value: unknown): JsonObject | undefined {
   return isObject(value) ? value : undefined
+}
+
+function optionalFiniteNumber(value: unknown): boolean {
+  return value === undefined || finiteNumber(value)
 }
 
 function finiteNumber(value: unknown): value is number {

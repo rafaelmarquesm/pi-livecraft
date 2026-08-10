@@ -248,6 +248,16 @@ export interface CopilotQuotaWindow {
   resetsAt?: number
 }
 
+export interface ProviderBalance {
+  currency: string
+  total: number
+  cash?: number
+  voucher?: number
+  granted?: number
+  toppedUp?: number
+  usable?: boolean
+}
+
 export interface QuotaProviderSnapshot<T> {
   data: T[]
   updatedAt?: number
@@ -258,6 +268,9 @@ export interface QuotaProviderSnapshot<T> {
 export interface QuotaSnapshot {
   openai: QuotaProviderSnapshot<OpenAiQuotaWindow>
   copilot: QuotaProviderSnapshot<CopilotQuotaWindow>
+  deepseek: QuotaProviderSnapshot<ProviderBalance>
+  moonshot: QuotaProviderSnapshot<ProviderBalance>
+  moonshotCn: QuotaProviderSnapshot<ProviderBalance>
   refreshing: boolean
   sessionRequired: boolean
 }
@@ -268,8 +281,11 @@ export type QuotaProviderReport<T> =
 
 export interface QuotaReport {
   protocol: 'pi-livecraft.quotas'
-  version: 1
+  version: 2
   refreshedAt: number
   openai: QuotaProviderReport<OpenAiQuotaWindow>
   copilot: QuotaProviderReport<CopilotQuotaWindow>
+  deepseek: QuotaProviderReport<ProviderBalance>
+  moonshot: QuotaProviderReport<ProviderBalance>
+  moonshotCn: QuotaProviderReport<ProviderBalance>
 }

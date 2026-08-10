@@ -1,6 +1,10 @@
 import { useState } from 'react'
 import { Tooltip } from '../../components/Tooltip.tsx'
-import type { QuotaProviderSnapshot, QuotaSnapshot } from '../../../shared/types.ts'
+import type {
+  ProviderBalance,
+  QuotaProviderSnapshot,
+  QuotaSnapshot,
+} from '../../../shared/types.ts'
 
 /** Displays normalized quota readings without deducing absent quota from provider responses. */
 export function QuotaWidget(
@@ -11,7 +15,13 @@ export function QuotaWidget(
   },
 ) {
   const [refreshing, setRefreshing] = useState(false)
-  const updatedAt = Math.max(quotas?.openai.updatedAt ?? 0, quotas?.copilot.updatedAt ?? 0)
+  const updatedAt = Math.max(
+    quotas?.openai.updatedAt ?? 0,
+    quotas?.copilot.updatedAt ?? 0,
+    quotas?.deepseek.updatedAt ?? 0,
+    quotas?.moonshot.updatedAt ?? 0,
+    quotas?.moonshotCn.updatedAt ?? 0,
+  )
 
   /** Keeps the button disabled until the manual refresh completes, whether success or error. */
   async function refresh(): Promise<void> {
@@ -86,10 +96,37 @@ export function QuotaWidget(
                 </div>
               ))}
             </ProviderSection>
+            <BalanceSection name='DeepSeek' provider={quotas.deepseek} />
+            <BalanceSection name='Moonshot AI' provider={quotas.moonshot} />
+            <BalanceSection name='Moonshot AI China' provider={quotas.moonshotCn} />
           </>
         )}
       </div>
     </>
+  )
+}
+
+function BalanceSection(
+  { name, provider }: { name: string; provider: QuotaProviderSnapshot<ProviderBalance> },
+) {
+  if (provider.data.length === 0 && !provider.error && !provider.stale) return null
+  return (
+    <ProviderSection name={name} provider={provider}>
+      {provider.data.map((balance) => (
+        <div className='quota-balance-row' key={balance.currency}>
+          <div className='quota-row-copy'>
+            <strong>{balance.currency} balance</strong>
+            <b>{formatBalance(balance.total, balance.currency)}</b>
+          </div>
+          {balanceDetails(balance).length > 0 && (
+            <small>{balanceDetails(balance).join(' · ')}</small>
+          )}
+          {balance.usable === false && (
+            <small className='quota-balance-unavailable'>Unavailable for API requests</small>
+          )}
+        </div>
+      ))}
+    </ProviderSection>
   )
 }
 
@@ -163,6 +200,38 @@ function formatPercent(value: number): string {
   return `${
     new Intl.NumberFormat(navigator.language, { maximumFractionDigits: 1 }).format(value)
   } %`
+}
+
+function balanceDetails(balance: ProviderBalance): string[] {
+  return [
+    balance.cash === undefined
+      ? undefined
+      : `cash ${formatBalance(balance.cash, balance.currency)}`,
+    balance.voucher === undefined
+      ? undefined
+      : `voucher ${formatBalance(balance.voucher, balance.currency)}`,
+    balance.granted === undefined
+      ? undefined
+      : `granted ${formatBalance(balance.granted, balance.currency)}`,
+    balance.toppedUp === undefined
+      ? undefined
+      : `topped up ${formatBalance(balance.toppedUp, balance.currency)}`,
+  ]
+    .filter((part): part is string => part !== undefined)
+}
+
+function formatBalance(value: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat(navigator.language, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 4,
+    })
+      .format(value)
+  } catch {
+    return `${currency} ${value.toFixed(2)}`
+  }
 }
 
 function formatNumber(value: number): string {

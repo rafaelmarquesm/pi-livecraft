@@ -1,4 +1,4 @@
-import type { CopilotQuotaWindow, OpenAiQuotaWindow } from './types.ts'
+import type { CopilotQuotaWindow, OpenAiQuotaWindow, ProviderBalance } from './types.ts'
 import { isObject } from './is-object.ts'
 
 /** Extracts rate-limit windows from OpenAI's opaque quota response. */
@@ -67,6 +67,43 @@ export function parseCopilotUsage(value: unknown): CopilotQuotaWindow[] {
   })
 }
 
+/** Normalizes DeepSeek's per-currency prepaid and granted account balances. */
+export function parseDeepSeekBalance(value: unknown): ProviderBalance[] {
+  const root = object(value)
+  if (!Array.isArray(root?.balance_infos)) return []
+  const usable = typeof root.is_available === 'boolean' ? root.is_available : undefined
+  return root.balance_infos.flatMap((candidate): ProviderBalance[] => {
+    const balance = object(candidate)
+    const currency = stringField(balance, 'currency')
+    const total = numberField(balance, 'total_balance')
+    if (!currency || total === undefined) return []
+    const granted = numberField(balance, 'granted_balance')
+    const toppedUp = numberField(balance, 'topped_up_balance')
+    return [{
+      currency,
+      total,
+      ...(granted !== undefined ? { granted } : {}),
+      ...(toppedUp !== undefined ? { toppedUp } : {}),
+      ...(usable !== undefined ? { usable } : {}),
+    }]
+  })
+}
+
+/** Normalizes Moonshot's balance response; currency follows the selected regional API. */
+export function parseMoonshotBalance(value: unknown, currency: string): ProviderBalance[] {
+  const data = object(object(value)?.data)
+  const total = numberField(data, 'available_balance')
+  if (total === undefined) return []
+  const voucher = numberField(data, 'voucher_balance')
+  const cash = numberField(data, 'cash_balance')
+  return [{
+    currency,
+    total,
+    ...(cash !== undefined ? { cash } : {}),
+    ...(voucher !== undefined ? { voucher } : {}),
+  }]
+}
+
 function percentUsedFromRemaining(value: Record<string, unknown>): number | undefined {
   const remaining = numberField(value, 'percent_left') ?? numberField(value, 'remaining_percent')
   return remaining === undefined ? undefined : 100 - remaining
@@ -84,6 +121,11 @@ function dateValue(value: unknown): number | undefined {
 
 function object(value: unknown): Record<string, unknown> | undefined {
   return isObject(value) ? value : undefined
+}
+
+function stringField(value: unknown, key: string): string | undefined {
+  const raw = object(value)?.[key]
+  return typeof raw === 'string' && /^[A-Z]{3,8}$/.test(raw) ? raw : undefined
 }
 
 function numberField(value: unknown, key: string): number | undefined {

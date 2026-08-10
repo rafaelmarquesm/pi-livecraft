@@ -1,6 +1,6 @@
 import type { QuotaSnapshot } from '../../../shared/types.ts'
 
-export type QuotaProvider = 'openai' | 'copilot'
+export type QuotaProvider = 'openai' | 'copilot' | 'deepseek' | 'moonshot' | 'moonshotCn'
 
 export interface RailQuota {
   label: string
@@ -11,6 +11,9 @@ export interface RailQuota {
 export function quotaProviderForModel(provider: unknown): QuotaProvider | undefined {
   if (provider === 'openai-codex') return 'openai'
   if (provider === 'github-copilot') return 'copilot'
+  if (provider === 'deepseek') return 'deepseek'
+  if (provider === 'moonshotai') return 'moonshot'
+  if (provider === 'moonshotai-cn') return 'moonshotCn'
   return undefined
 }
 
@@ -28,14 +31,61 @@ export function railQuota(
       value: `${Math.round(window.remainingPercent)}%`,
     }
   }
+  if (provider === 'copilot') {
+    const window = quotas.copilot.data[0]
+    if (!window) return undefined
+    const remainingPercent = (window.limit - window.used) / window.limit * 100
+    return {
+      label: `GitHub Copilot quota: ${formatPercent(remainingPercent)} remaining`,
+      stale: quotas.copilot.stale,
+      value: `${Math.round(Math.max(0, Math.min(100, remainingPercent)))}%`,
+    }
+  }
 
-  const window = quotas.copilot.data[0]
-  if (!window) return undefined
-  const remainingPercent = (window.limit - window.used) / window.limit * 100
+  const snapshot = provider === 'deepseek'
+    ? quotas.deepseek
+    : provider === 'moonshot'
+    ? quotas.moonshot
+    : quotas.moonshotCn
+  const balance = snapshot.data.find(({ currency }) => currency === 'USD') ?? snapshot.data[0]
+  if (!balance) return undefined
+  const name = provider === 'deepseek'
+    ? 'DeepSeek'
+    : provider === 'moonshot'
+    ? 'Moonshot AI'
+    : 'Moonshot AI China'
   return {
-    label: `GitHub Copilot quota: ${formatPercent(remainingPercent)} remaining`,
-    stale: quotas.copilot.stale,
-    value: `${Math.round(Math.max(0, Math.min(100, remainingPercent)))}%`,
+    label: `${name} balance: ${formatCurrency(balance.total, balance.currency)}`,
+    stale: snapshot.stale,
+    value: formatCompactCurrency(balance.total, balance.currency),
+  }
+}
+
+function formatCurrency(value: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat(navigator.language, {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 2,
+    })
+      .format(value)
+  } catch {
+    return `${currency} ${value.toFixed(2)}`
+  }
+}
+
+function formatCompactCurrency(value: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat(navigator.language, {
+      style: 'currency',
+      currency,
+      currencyDisplay: 'narrowSymbol',
+      notation: 'compact',
+      maximumFractionDigits: 1,
+    })
+      .format(value)
+  } catch {
+    return `${currency} ${Math.round(value)}`
   }
 }
 

@@ -60,7 +60,32 @@ test.describe('primary controls', () => {
     await expect(thinking).toContainText(target)
   })
 
-  test('quota and usage rail buttons expose distinct panels and inference metrics', async ({ page }) => {
+  test('quota and usage rail buttons expose balances and inference metrics', async ({ page }) => {
+    await page.route('**/api/quotas', async (route) => {
+      await route.fulfill({
+        json: {
+          openai: { data: [], stale: false },
+          copilot: { data: [], stale: false },
+          deepseek: {
+            data: [{
+              currency: 'USD',
+              total: 12.3456,
+              granted: 2.5,
+              toppedUp: 9.8456,
+              usable: true,
+            }],
+            stale: false,
+          },
+          moonshot: {
+            data: [{ currency: 'USD', total: 49.58894, cash: 3.00001, voucher: 46.58893 }],
+            stale: false,
+          },
+          moonshotCn: { data: [], stale: false },
+          refreshing: false,
+          sessionRequired: false,
+        },
+      })
+    })
     await page.route('**/api/usage**', async (route) => {
       await route.fulfill({
         json: {
@@ -92,6 +117,8 @@ test.describe('primary controls', () => {
     const tools = page.getByRole('complementary', { name: 'Workspace tools' })
     await tools.getByRole('button', { name: /^Expand quota panel/ }).click()
     await expect(tools.getByText('Quotas', { exact: true })).toBeVisible()
+    await expect(tools.getByRole('region', { name: 'DeepSeek' })).toContainText('granted')
+    await expect(tools.getByRole('region', { name: 'Moonshot AI' })).toContainText('voucher')
 
     // The percent rail is provider capacity, not token/cost history. Its panel
     // now points users directly to the otherwise easy-to-confuse dollar rail.

@@ -6,11 +6,13 @@ The quotas widget gives a quick answer to a practical question: how much of the 
 
 - OpenAI Codex five-hour and seven-day windows, with the remaining percentage and reset time;
 - GitHub Copilot usage categories, with used and total values plus reset times when available;
+- DeepSeek balances by currency, including granted and topped-up funds;
+- Moonshot AI international and China balances, including cash and voucher funds;
 - when the reading was last updated;
 - a stale marker when the latest refresh failed but an older valid reading is still available;
 - provider errors without hiding valid data from the other provider.
 
-The widget never invents a missing limit or treats absent data as zero. An open Pi session is required to request a fresh reading. The last valid snapshot can remain visible while stale, which is more useful than replacing known data with an empty panel.
+The widget never invents a missing limit or treats absent data as zero. Unconfigured balance providers stay hidden. An open Pi session is required to request a fresh reading. The last valid snapshot can remain visible while stale, which is more useful than replacing known data with an empty panel. The `%` rail follows the selected model: percentage for Codex/Copilot, compact currency balance for DeepSeek/Moonshot.
 
 ## Refresh behavior
 
@@ -22,6 +24,6 @@ For the rail summary, Codex prefers its five-hour window. Copilot uses the first
 
 `App.tsx` owns the shared quota snapshot. `QuotaWidget` renders it, and `quota-display.ts` derives the compact rail value for the active provider.
 
-Requests travel through `src/api.ts` and the [quotas backend capability](/server/features/quotas/README.md). Pi Livecraft's quota extension publishes a validated, versioned status payload through Pi rather than reading provider state directly from the browser.
+Requests travel through `src/api.ts` and the [quotas backend capability](/server/features/quotas/README.md). Pi Livecraft's quota extension publishes a validated, versioned status payload through Pi rather than reading provider state directly from the browser. API keys are resolved inside Pi's credential runtime and are never included in the status payload, backend snapshot, logs, or browser.
 
-Focused coverage: `test/quotas.test.ts`; `e2e/buttons.spec.ts` verifies the `%` panel, its Usage handoff, the `$` rail's direct reopen, and the rendered inference metrics.
+Focused coverage: `test/quotas.test.ts`; `e2e/buttons.spec.ts` verifies normalized DeepSeek/Moonshot balance rendering, the `%` panel's Usage handoff, the `$` rail's direct reopen, and inference metrics.

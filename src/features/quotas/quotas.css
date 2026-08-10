@@ -63,8 +63,19 @@
   font-size: 9px;
   font-weight: 700;
 }
-.quota-row + .quota-row {
+.quota-row + .quota-row, .quota-balance-row + .quota-balance-row {
   margin-top: 17px;
+}
+.quota-balance-row small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+.quota-balance-row .quota-balance-unavailable {
+  color: var(--danger);
+  font-weight: 700;
 }
 .quota-row-copy {
   display: flex;
