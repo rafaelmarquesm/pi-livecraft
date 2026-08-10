@@ -1,0 +1,90 @@
+# Validated Work and Quality Lab acceptance traceability
+
+Date: 2026-08-10  
+Implementation range: `c173b43..db80d41`  
+Specification: `docs/SPEC-VALIDATED-WORK-AND-QUALITY-LAB.md`
+
+## Status vocabulary
+
+- **PASS**: directly observed through a public interface, integration boundary, or deterministic acceptance command.
+- **PARTIAL**: implementation and lower-level checks pass, but one or more specified acceptance journeys lack direct observation.
+- **BLOCKED**: requires credentials, approved paid spend, or publication outside this repository.
+
+## Definition of Done matrix
+
+| # | Requirement | Concrete check | Observed result | Status |
+|---:|---|---|---|---|
+| 1 | Standard has zero token delta and no extra call | `test/validated-work-extension.integration.test.ts`, standard-mode config assertions, offline campaign arm fingerprints | Default tool is inactive, active tools are unchanged, and no synthetic/review call is scheduled in standard mode | PASS |
+| 2 | Plan first blocks writes until approval and restores tools | `test/validated-work-extension.integration.test.ts`; `e2e/quality.spec.ts` approval, request-changes, and cancellation journeys | Write/bash/unknown tools are blocked while planning; approval restores the exact prior tool list; request changes remains read-only | PASS |
+| 3 | State is branch-aware and survives resume/fork/restart | Extension integration and backend tests in `test/validated-work-extension.integration.test.ts` and `test/validated-work-backend.test.ts` | Branch reconstruction, persisted tool-result snapshots, resume, fork, and stale runtime handling pass | PASS |
+| 4 | Readiness derives from traceability and observed evidence | `test/validated-work-extension.test.ts`, protocol tests, evidence/gate tests included in the full serial suite | Claimed text alone does not verify work; missing checks/evidence block readiness; observed checks can advance it | PASS |
+| 5 | Auto-follow-up respects turn, cost, no-progress, and abort | Gate/config/backend tests plus regression `cb91198` | Default and configured limits, dedupe fingerprint, no-progress stop, pause, and abort paths pass | PASS |
+| 6 | Review is isolated, read-only, bounded, structured, deduplicated | `test/code-review-{packet,output,store,protocol}.test.ts`; review API tests; review E2E triage/send preview | Packet and output limits pass, filesystem tools are unavailable, reports are structured/stored, unchanged diff is deduplicated, and sending requires preview | PASS |
+| 7 | UI shows plan, checks, findings, and cost without a false score | `e2e/quality.spec.ts`; component and backend fixture assertions | Plan approval, readiness text, campaign metrics, review findings, usage/cost fields, and no 0–100 aggregate score are rendered | PASS |
+| 8 | Usage attributes automation/review without guessed cost | `test/usage-ledger.test.ts`, `test/usage-ledger-burst.test.ts`, `test/usage-widget.test.ts` | Main, automated validation, code review, prompt improvement, isolated, and legacy usage reconcile without duplicate cost | PASS |
+| 9 | Performance budgets pass | `npm run bench:snapshot`, `npm run bench:memory`, `npm run bench:quality`; packet/state size tests | Snapshot and memory gates passed locally; state and packet serialized-size guards pass. The broader 1/3/10 real-Pi PSS matrix specified in section 12 was not captured in this run | PARTIAL |
+| 10 | E2E is provider-independent | `npm run test:e2e` | 24 Playwright tests passed using seeded routes/state and no paid provider | PASS |
+| 11 | A/B campaigns produce reproducible artifacts and invalidity gates | `npm run eval:quality:offline`, `npm run bench:quality`, quality campaign/validity/statistics tests | Deterministic fake campaign emits raw JSON/Markdown, fingerprints, invalid reasons, pass@1/pass@k, Wilson interval, paired deltas, cost, time, and small-sample guards | PASS |
+| 12 | A published standard-vs-validated campaign with k>=3 exists before default promotion | Manual `.github/workflows/agent-quality.yml` plus external credentials/budget | Offline k=3 smoke ran, but no real paid 18-valid-trial campaign was authorized or published. Default remains `standard` and `validated` remains Experimental | BLOCKED |
+| 13 | Technical, threat-model, UX, and operations docs are current | Protocol docs, feature READMEs, evaluation README, adapter attribution, settings guide, this matrix | Implementation and operating contracts are documented. This matrix records remaining rollout and benchmark gaps | PASS |
+| 14 | Quality CI and E2E are green | Offline workflow definition; local format/lint/typecheck/unit/build/E2E runs | Local checks passed. Hosted CI was not observed because commits were not pushed | PARTIAL |
+
+## Public interface and integration-boundary checks
+
+| Public output or boundary | Concrete check | Observed result |
+|---|---|---|
+| Composer mode selector | `e2e/quality.spec.ts` | Warning, Experimental mode, approval, cancellation, and narrow 320px keyboard access pass |
+| First-use cost disclosure | `e2e/quality.spec.ts` | Confirmation dialog is shown before enabling experimental mode |
+| Settings Quality tab | `e2e/settings-quality.spec.ts`; `test/quality-settings.test.ts` | Safe defaults, malformed/legacy storage fallback, ranges, persistence, no secret fields, and acknowledgement reset pass |
+| Plan approval commands | `e2e/quality.spec.ts`; backend tests | Approve, request changes as a real user prompt, keep/cancel protocol paths are validated |
+| Quality state HTTP/SSE boundary | `test/validated-work-backend.test.ts`; full serial suite | Versioned summary/details parsing, bounds, ETag behavior, session state, and private command guards pass |
+| Traceability/evidence protocol | Protocol and extension tests | IDs, uniqueness, references, limits, evidence linking, and readiness derivation pass |
+| Review HTTP/store/runner boundary | Code-review packet/output/store tests and review E2E | Read-only packet, strict output, persistence, triage, cost estimate, and selected-send confirmation pass |
+| Usage ledger boundary | Usage ledger and widget tests | Auxiliary records merge by purpose without duplicate costs; legacy usage remains unknown |
+| Campaign filesystem/API/UI boundary | Quality campaign, validity, adapter tests and campaign E2E | Results-root confinement, artifact validation, hidden empty tab, metrics display, and adapters pass |
+| Manual paid workflow | Workflow source inspection and offline runner tests | Inputs, approval environment, provider concurrency, redaction, failure upload, and summary are implemented; external execution is blocked |
+| Production bundle | `npm run build` | Build passed; Vite reported the existing >500kB chunk advisory |
+| Backward compatibility | malformed/legacy parser tests and full serial suite | Legacy usage/settings records remain accepted and malformed external data fails safely |
+
+## Required Playwright journey coverage
+
+Section 14.4 lists twelve journeys. Direct coverage currently observed:
+
+1. mode selector labels and warning: **PASS**
+2. plan approve/request changes/cancel: **PASS**
+3. Quality panel visible and narrow resize/collapse: **PASS**
+4. traceability navigation: **covered by component behavior and seeded state, but no dedicated navigation assertion**
+5. budget stop: **covered by gate/backend tests, but no dedicated Playwright assertion**
+6. review loading/error/empty/findings: **findings PASS; loading/error/empty lack dedicated Playwright assertions**
+7. finding triage and send confirmation: **PASS**
+8. Usage by purpose: **unit/component coverage; no dedicated Playwright assertion**
+9. campaign small-sample warning: **PASS**
+10. keyboard, 320px, 768px, and 200% zoom: **keyboard/320px PASS; 768px and 200% zoom lack dedicated assertions**
+11. stale state when switching session: **backend/state coverage; no dedicated Playwright assertion**
+12. backend reconnect during quality state: **general reconnect coverage exists elsewhere, but no dedicated Quality Playwright assertion**
+
+These missing browser assertions do not invalidate the implemented lower-level behavior, but they prevent claiming complete section 14.4 traceability.
+
+## Commands and observed results
+
+| Command | Result |
+|---|---|
+| `npm run format:check` | PASS |
+| `npm run lint` | PASS with 10 pre-existing warnings and 0 errors |
+| `npm run typecheck` | PASS |
+| `node --test --test-concurrency=1` | 539 total, 537 passed, 2 skipped, 0 failed |
+| `npm run build` | PASS |
+| `npm run test:e2e` | 24 passed |
+| `npm run bench:snapshot` | PASS; 5,000-message cold 1215.3ms, warm p50 16.5ms |
+| `npm run bench:memory` | PASS; +2.8 MiB process memory in the benchmark fixture |
+| `npm run bench:quality` | PASS; deterministic k=3 fake comparison and complete artifacts |
+| `npm run eval:quality:offline` | PASS; 15/15 focused offline checks |
+
+## Remaining acceptance work
+
+1. Run and publish the real paid `standard` vs `validated` campaign with at least 18 valid trials, after explicit credentials and budget approval.
+2. Observe hosted CI after pushing the commit series.
+3. Add the missing dedicated Playwright assertions listed above if strict one-to-one compliance with section 14.4 is required.
+4. Capture the complete 1/3/10 real-Pi PSS and readiness timing matrix on the authoritative Node 24/Linux environment.
+
+No default promotion is permitted until item 1 satisfies the promotion gates. The current safe state is `standard` by default with `validated` marked Experimental.
