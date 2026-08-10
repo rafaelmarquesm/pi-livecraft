@@ -10,7 +10,11 @@ import type { JsonObject } from './types.ts'
  * composer can apply its never-overwrite policy (E15).
  */
 
-export const reservedStatusKeys = ['agent', 'pi-livecraft.quotas'] as const
+export const reservedStatusKeys = [
+  'agent',
+  'pi-livecraft.quotas',
+  'pi-livecraft.validated-work',
+] as const
 
 export type ExtensionWidgetPlacement = 'aboveEditor' | 'belowEditor'
 

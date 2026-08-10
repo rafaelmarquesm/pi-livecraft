@@ -7,7 +7,14 @@
     "server/pi-launcher.ts",
     "server/prompt-improvement.ts",
     "server/run-isolated-prompt.ts",
+    "pi-extensions/validated-work/index.ts",
+    "pi-extensions/validated-work/schema.ts",
+    "pi-extensions/validated-work/state.ts",
+    "pi-extensions/validated-work/gates.ts",
+    "pi-extensions/validated-work/evidence.ts",
+    "pi-extensions/validated-work/prompt.ts",
     "shared/is-object.ts",
+    "shared/validated-work.ts",
     "shared/extension-ui.ts"
   ]
 }
