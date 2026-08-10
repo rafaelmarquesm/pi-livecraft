@@ -108,6 +108,7 @@ test.describe('primary controls', () => {
             cacheHitRate: 0.5,
           }],
           byModel: [],
+          byPurpose: [],
         },
       })
     })

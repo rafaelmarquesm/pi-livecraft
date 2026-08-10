@@ -140,6 +140,7 @@ export interface ManagerRequest {
     | 'command'
     | 'improve_prompt'
     | 'run_prompt'
+    | 'run_review'
     | 'status'
     | 'restart'
   sessionId?: string
@@ -155,6 +156,7 @@ export interface ManagerRequest {
   tools?: string[]
   includeContextFiles?: boolean
   usagePurpose?: 'code_review' | 'prompt_improvement' | 'other_isolated'
+  reviewPacket?: JsonObject
   direction?: string
 }
 
@@ -175,6 +177,7 @@ export interface ManagerEvent {
     | 'manager_connected'
     | 'manager_disconnected'
     | 'manager_status'
+    | 'quality_review_updated'
     | 'pi'
   sessionId: string
   data?: unknown

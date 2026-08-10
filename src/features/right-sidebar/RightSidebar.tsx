@@ -54,6 +54,7 @@ export function RightSidebar({
   completedSessionIds,
   currentQuotaProvider,
   qualityMode,
+  qualityReviewRevision,
   qualitySummary,
   onAnalysisNavigate,
   onResize,
@@ -86,6 +87,7 @@ export function RightSidebar({
   completedSessionIds: ReadonlySet<string>
   currentQuotaProvider: QuotaProvider | undefined
   qualityMode: ValidatedWorkMode
+  qualityReviewRevision: number
   qualitySummary: ValidatedWorkSummaryV1 | null
   onAnalysisNavigate: (target: SessionAnalysisTarget) => void
   onResize: (width: number) => void
@@ -244,6 +246,7 @@ export function RightSidebar({
               <QualityWidget
                 mode={qualityMode}
                 onModeChange={onQualityModeChange}
+                reviewRevision={qualityReviewRevision}
                 sessionId={activeSessionId}
                 summary={qualitySummary}
               />

@@ -16,7 +16,9 @@ import {
   loadPromptImprovementSystemPrompt,
 } from './prompt-improvement.ts'
 import { runIsolatedPrompt } from './run-isolated-prompt.ts'
+import { runStructuredCodeReview } from './features/code-review/review-runner.ts'
 import { isAuxiliaryUsagePurpose } from './features/usage/auxiliary-usage-ledger.ts'
+import type { CodeReviewPacket } from './features/code-review/packet-builder.ts'
 import { isObject } from '../shared/is-object.ts'
 import {
   isBlockingUiRequest,
@@ -124,6 +126,7 @@ async function handleRequest(socket: Socket, value: unknown): Promise<void> {
   const tracksActivity = value.action === 'create' || value.action === 'open'
     || value.action === 'close' || value.action === 'rename' || value.action === 'command'
     || value.action === 'improve_prompt' || value.action === 'run_prompt'
+    || value.action === 'run_review'
   if (tracksActivity) activeRequests += 1
   try {
     let data: unknown
@@ -152,6 +155,7 @@ async function handleRequest(socket: Socket, value: unknown): Promise<void> {
     else if (value.action === 'rename') data = await renameSession(value)
     else if (value.action === 'improve_prompt') data = await improvePrompt(value)
     else if (value.action === 'run_prompt') data = await runPrompt(value)
+    else if (value.action === 'run_review') data = await runReview(value)
     else data = await sendCommand(value)
     respond(socket, { kind: 'response', id: value.id, ok: true, data })
   } catch (error) {
@@ -532,6 +536,33 @@ function isModelOption(value: unknown): value is { provider: string; modelId: st
   return isObject(value) && typeof value.provider === 'string' && typeof value.modelId === 'string'
 }
 
+async function runReview(request: ManagerRequest): Promise<unknown> {
+  if (typeof request.sessionId !== 'string' || !isModelOption(request.model)) {
+    throw new Error('Session id and reviewer model are required')
+  }
+  if (!isCodeReviewPacket(request.reviewPacket))
+    throw new Error('A bounded review packet is required')
+  if (typeof request.thinkingLevel !== 'string' || request.thinkingLevel.trim() === '') {
+    throw new Error('Reviewer thinking level is required')
+  }
+  const session = sessions.get(request.sessionId)
+  if (!session || session.summary.status === 'exited')
+    throw new Error('Active Pi session is unavailable')
+  return await runStructuredCodeReview({
+    cwd: session.summary.cwd,
+    packet: request.reviewPacket,
+    model: request.model,
+    thinkingLevel: request.thinkingLevel,
+  })
+}
+
+function isCodeReviewPacket(value: unknown): value is CodeReviewPacket {
+  return isObject(value) && typeof value.promptVersion === 'string'
+    && typeof value.packet === 'string'
+    && typeof value.diffHash === 'string' && Array.isArray(value.changedPaths)
+    && isObject(value.truncation)
+}
+
 /** Forwards one RPC command while making prompt activity visible before Pi emits its first event. */
 async function sendCommand(request: ManagerRequest): Promise<JsonObject> {
   if (typeof request.sessionId !== 'string' || !isObject(request.command)) {
@@ -659,6 +690,7 @@ function isManagerRequest(value: unknown): value is ManagerRequest {
   return value.action === 'list' || value.action === 'create' || value.action === 'open'
     || value.action === 'close' || value.action === 'rename' || value.action === 'command'
     || value.action === 'improve_prompt' || value.action === 'run_prompt'
+    || value.action === 'run_review'
     || value.action === 'status' || value.action === 'restart'
 }
 function errorMessage(error: unknown): string {

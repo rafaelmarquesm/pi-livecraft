@@ -220,6 +220,7 @@ function App() {
   const [qualitySummaries, setQualitySummaries] = useState<
     Record<string, ValidatedWorkSummaryV1 | null>
   >({})
+  const [qualityReviewRevisions, setQualityReviewRevisions] = useState<Record<string, number>>({})
   const [planDialogDismissedKey, setPlanDialogDismissedKey] = useState<string | null>(null)
   const [planDialogDetails, setPlanDialogDetails] = useState<ValidatedWorkDetailsResponse | null>(
     null,
@@ -848,6 +849,15 @@ function App() {
       }
       if (managerEvent.event === 'manager_status' && isManagerRuntimeStatus(managerEvent.data))
         setManagerRuntimeStatus(managerEvent.data)
+      if (managerEvent.event === 'quality_review_updated') {
+        setQualityReviewRevisions((current) => ({
+          ...current,
+          [managerEvent.sessionId]: isObject(managerEvent.data)
+              && typeof managerEvent.data.revision === 'number'
+            ? managerEvent.data.revision
+            : (current[managerEvent.sessionId] ?? 0) + 1,
+        }))
+      }
       if (
         managerEvent.event === 'manager_connected' || managerEvent.event === 'session_created'
         || managerEvent.event === 'session_exited' || managerEvent.event === 'session_reassigned'
@@ -870,6 +880,12 @@ function App() {
           return next
         })
         setQualitySummaries((current) => {
+          if (!(managerEvent.sessionId in current)) return current
+          const next = { ...current }
+          delete next[managerEvent.sessionId]
+          return next
+        })
+        setQualityReviewRevisions((current) => {
           if (!(managerEvent.sessionId in current)) return current
           const next = { ...current }
           delete next[managerEvent.sessionId]
@@ -906,6 +922,9 @@ function App() {
   const selectedQualitySummary = selectedSessionId
     ? qualitySummaries[selectedSessionId] ?? null
     : null
+  const selectedQualityReviewRevision = selectedSessionId
+    ? qualityReviewRevisions[selectedSessionId] ?? 0
+    : 0
   const selectedQualityMode = modeFromSummary(selectedQualitySummary)
   const planDialogKey = selectedSessionId && selectedQualitySummary?.phase === 'awaiting_approval'
     ? `${selectedSessionId}:${selectedQualitySummary.revision}`
@@ -1762,6 +1781,7 @@ function App() {
         completedSessionIds={completedSessionIds}
         currentQuotaProvider={currentQuotaProvider}
         qualityMode={selectedQualityMode}
+        qualityReviewRevision={selectedQualityReviewRevision}
         qualitySummary={selectedQualitySummary}
         onAnalysisNavigate={navigateToAnalysisTarget}
         onResize={updateRightSidebarWidth}

@@ -151,6 +151,91 @@
   color: var(--danger);
   font-size: 12px;
 }
+.review-header,
+.review-actions,
+.review-send {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.review-header p {
+  margin: 2px 0 0;
+}
+.review-header button,
+.review-actions button,
+.review-send button,
+.review-dismiss button {
+  min-height: 40px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+}
+.review-runner-controls,
+.review-dismiss {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.review-runner-controls label,
+.review-dismiss label {
+  display: grid;
+  gap: 4px;
+  color: var(--subtle);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.review-runner-controls input,
+.review-dismiss textarea {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--canvas);
+  color: var(--ink);
+}
+.review-findings {
+  padding-left: 0;
+  list-style: none;
+}
+.review-findings li {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+}
+.review-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.review-send-confirm {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--surface);
+}
+.review-send-confirm pre {
+  max-height: 220px;
+  overflow: auto;
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--canvas);
+  white-space: pre-wrap;
+}
 .quality-dialog-backdrop {
   position: fixed;
   inset: 0;
@@ -227,7 +312,9 @@
 }
 @media (max-width: 520px) {
   .quality-plan-dialog-body,
-  .quality-metrics {
+  .quality-metrics,
+  .review-runner-controls,
+  .review-dismiss {
     grid-template-columns: 1fr;
   }
   .quality-dialog-actions {

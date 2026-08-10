@@ -221,6 +221,16 @@ export default function registerValidatedWork(pi: ExtensionAPI): void {
         publishSummary(ctx)
         return
       }
+      if (command.action === 'review_summary') {
+        pi.appendEntry('pi-livecraft.validated-work-review-summary', {
+          protocol: 'pi-livecraft.validated-work-review-summary',
+          version: 1,
+          updatedAt: Date.now(),
+          review: command.review,
+        })
+        publishSummary(ctx)
+        return
+      }
       const now = Date.now()
       if (command.action === 'approve') {
         state = approveState(state, now)

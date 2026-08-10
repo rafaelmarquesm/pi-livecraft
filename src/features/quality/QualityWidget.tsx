@@ -8,16 +8,19 @@ import type {
 import { phaseLabels, qualityModes } from './quality-display.ts'
 import { PlanSection } from './PlanSection.tsx'
 import { ReadinessCard } from './ReadinessCard.tsx'
+import { ReviewSection } from './ReviewSection.tsx'
 import { TraceabilitySection } from './TraceabilitySection.tsx'
 
 export function QualityWidget({
   mode,
   onModeChange,
+  reviewRevision,
   sessionId,
   summary,
 }: {
   mode: ValidatedWorkMode
   onModeChange: (mode: ValidatedWorkMode) => void
+  reviewRevision: number
   sessionId: string
   summary: ValidatedWorkSummaryV1 | null
 }) {
@@ -86,6 +89,7 @@ export function QualityWidget({
       <ReadinessCard state={state} summary={activeSummary} />
       <PlanSection state={state} />
       <TraceabilitySection state={state} />
+      <ReviewSection revision={reviewRevision} sessionId={sessionId} />
     </div>
   )
 }

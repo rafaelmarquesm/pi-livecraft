@@ -1,4 +1,12 @@
 import type {
+  CodeReviewDecisionUpdate,
+  CodeReviewDetailsResponse,
+  CodeReviewEstimateResponse,
+  CodeReviewRunOptions,
+  SendReviewFindingsResponse,
+  SendReviewFindingsRequest,
+} from '../shared/code-review.ts'
+import type {
   DirectoryListing,
   GitFileDiff,
   GitPushResult,
@@ -30,6 +38,7 @@ const managerEventNames: readonly ManagerEvent['event'][] = [
   'manager_connected',
   'manager_disconnected',
   'manager_status',
+  'quality_review_updated',
   'pi',
 ]
 
@@ -393,6 +402,52 @@ export async function updateValidatedWorkConfig(
     throw new Error(message)
   }
   return { etag: response.headers.get('ETag'), data: value as ValidatedWorkDetailsResponse }
+}
+
+export async function getCodeReviews(sessionId: string): Promise<CodeReviewDetailsResponse> {
+  return await request<CodeReviewDetailsResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/reviews`,
+  )
+}
+
+export async function estimateCodeReview(sessionId: string): Promise<CodeReviewEstimateResponse> {
+  return await request<CodeReviewEstimateResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/reviews/estimate`,
+  )
+}
+
+export async function runCodeReview(
+  sessionId: string,
+  options: CodeReviewRunOptions,
+): Promise<CodeReviewDetailsResponse> {
+  return await request<CodeReviewDetailsResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/reviews`,
+    { method: 'POST', body: JSON.stringify(options) },
+  )
+}
+
+export async function updateReviewFinding(
+  sessionId: string,
+  reviewId: string,
+  findingId: string,
+  decision: CodeReviewDecisionUpdate,
+): Promise<CodeReviewDetailsResponse> {
+  return await request<CodeReviewDetailsResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/reviews/${
+      encodeURIComponent(reviewId)
+    }/findings/${encodeURIComponent(findingId)}`,
+    { method: 'PATCH', body: JSON.stringify(decision) },
+  )
+}
+
+export async function sendReviewFindings(
+  sessionId: string,
+  body: SendReviewFindingsRequest,
+): Promise<SendReviewFindingsResponse> {
+  return await request<SendReviewFindingsResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/reviews/send`,
+    { method: 'POST', body: JSON.stringify(body) },
+  )
 }
 
 export async function sendPiCommand(sessionId: string, command: JsonObject): Promise<JsonObject> {

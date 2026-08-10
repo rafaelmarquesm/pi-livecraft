@@ -85,6 +85,47 @@ export interface CodeReviewReportV1 {
   validityReason?: string
 }
 
+export type CodeReviewRunStatus =
+  | 'never_run'
+  | 'queued'
+  | 'running'
+  | 'complete'
+  | 'stale'
+  | 'failed'
+
+export interface CodeReviewDetailsResponse {
+  revision: number
+  status: CodeReviewRunStatus
+  activeReviewId?: string
+  reports: CodeReviewReportV1[]
+  lastError?: string
+}
+
+export interface CodeReviewRunOptions {
+  mode: 'manual' | 'automatic'
+  model: { provider: string; modelId: string }
+  thinkingLevel: string
+}
+
+export interface CodeReviewEstimateResponse {
+  estimatedInputTokens: number
+  diffHash: string
+}
+
+export interface CodeReviewDecisionUpdate {
+  status: Extract<CodeReviewFindingStatus, 'confirmed' | 'dismissed' | 'sent_to_agent' | 'resolved'>
+  reason?: string
+}
+
+export interface SendReviewFindingsRequest {
+  findingIds: string[]
+}
+
+export interface SendReviewFindingsResponse {
+  prompt: string
+  details: CodeReviewDetailsResponse
+}
+
 export class CodeReviewParseError extends Error {
   constructor(message: string) {
     super(message)

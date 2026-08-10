@@ -5,6 +5,7 @@ These extensions are loaded into every persistent Pi session started by Pi Livec
 - `ask-user-question.ts` registers the structured questionnaire tool and bridges its versioned payload through Pi's extension UI protocol.
 - `quotas.ts` registers the private `/livecraft-quotas` command and publishes normalized provider usage through a versioned status payload.
 - `validated-work/` registers the inactive-by-default structured planning tool, private `/livecraft-validated-work` command, and bounded private summary channel.
+- `code-review.ts` registers the structured `submit_code_review` output tool used only by the manager-owned isolated reviewer.
 
 `server/pi-process.ts` owns the extension paths. These modules use Pi's public extension API and shared protocols only; they do not define Pi Livecraft HTTP routes.
 

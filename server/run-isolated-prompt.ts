@@ -60,6 +60,8 @@ export interface RunIsolatedPromptOptions {
   includeContextFiles?: boolean
   /** Purpose used when persisting isolated operation usage outside the session ledger. */
   usagePurpose?: AuxiliaryUsagePurpose
+  /** Maximum time to wait for the isolated agent to settle. */
+  timeoutMs?: number
 }
 
 export interface IsolatedPromptUsage {
@@ -132,7 +134,7 @@ export async function runIsolatedPrompt(
     observedModel = modelFromState(await pi.request({ type: 'get_state' }).catch(() => ({})))
       ?? observedModel
 
-    const settled = waitForPiEvent(pi, 'agent_settled')
+    const settled = waitForPiEvent(pi, 'agent_settled', options.timeoutMs)
     await Promise.all([
       pi.request({ type: 'prompt', message: options.prompt }),
       settled,
@@ -226,9 +228,9 @@ function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 && value.length <= 200 ? value : undefined
 }
 /** Waits for a terminal Pi event while bounding failures from a stalled disposable process. */
-function waitForPiEvent(pi: PiProcess, type: string): Promise<void> {
+function waitForPiEvent(pi: PiProcess, type: string, timeoutMs = 2 * 60_000): Promise<void> {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => finish(new Error(`Pi event timed out: ${type}`)), 2 * 60_000)
+    const timeout = setTimeout(() => finish(new Error(`Pi event timed out: ${type}`)), timeoutMs)
     const onEvent = (event: JsonObject): void => {
       if (event.type === type) finish()
     }

@@ -135,11 +135,12 @@ export interface ValidatedWorkConfigEntry {
 }
 
 export interface ValidatedWorkCommandArgs {
-  action: 'configure' | 'approve' | 'status' | 'abort_automation'
+  action: 'configure' | 'approve' | 'status' | 'abort_automation' | 'review_summary'
   mode?: ValidatedWorkMode
   paused?: boolean
   maxExtraTurns?: number
   maxAttributedCostUsd?: number
+  review?: unknown
 }
 
 export function parseConfigEntry(value: unknown): ValidatedWorkConfigEntry | undefined {
@@ -179,17 +180,24 @@ export function parseCommandArgs(args: string): ValidatedWorkCommandArgs {
     throw new Error('Expected JSON args, a mode, or no args for /livecraft-validated-work.')
   }
   if (!isObject(value)) throw new Error('Validated work config args must be an object.')
-  const allowed = new Set(['action', 'mode', 'paused', 'maxExtraTurns', 'maxAttributedCostUsd'])
+  const allowed = new Set([
+    'action',
+    'mode',
+    'paused',
+    'maxExtraTurns',
+    'maxAttributedCostUsd',
+    'review',
+  ])
   for (const key of Object.keys(value)) {
     if (!allowed.has(key)) throw new Error(`Validated work config field is not allowed: ${key}`)
   }
   const action = value.action === undefined ? 'configure' : value.action
   if (
     action !== 'configure' && action !== 'approve' && action !== 'status'
-    && action !== 'abort_automation'
+    && action !== 'abort_automation' && action !== 'review_summary'
   ) {
     throw new Error(
-      'Validated work action must be configure, approve, abort_automation, or status.',
+      'Validated work action must be configure, approve, abort_automation, review_summary, or status.',
     )
   }
   const parsed: ValidatedWorkCommandArgs = { action }
@@ -213,6 +221,11 @@ export function parseCommandArgs(args: string): ValidatedWorkCommandArgs {
       throw new Error('maxAttributedCostUsd must be a number from 0 to 100.')
     }
     parsed.maxAttributedCostUsd = value.maxAttributedCostUsd
+  }
+  if (parsed.action === 'review_summary') {
+    if (!Object.hasOwn(value, 'review')) throw new Error('review_summary requires review.')
+    parsed.review = value.review
+    return parsed
   }
   if (
     parsed.action === 'configure' && !parsed.mode && parsed.paused === undefined

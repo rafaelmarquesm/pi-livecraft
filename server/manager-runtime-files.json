@@ -7,9 +7,11 @@
     "server/pi-launcher.ts",
     "server/prompt-improvement.ts",
     "server/run-isolated-prompt.ts",
+    "server/features/code-review/review-runner.ts",
     "server/session-entries.ts",
     "server/features/usage/usage-ledger.ts",
     "server/features/usage/auxiliary-usage-ledger.ts",
+    "pi-extensions/code-review.ts",
     "pi-extensions/validated-work/index.ts",
     "pi-extensions/validated-work/schema.ts",
     "pi-extensions/validated-work/state.ts",
@@ -17,6 +19,7 @@
     "pi-extensions/validated-work/evidence.ts",
     "pi-extensions/validated-work/prompt.ts",
     "shared/is-object.ts",
+    "shared/code-review.ts",
     "shared/validated-work.ts",
     "shared/extension-ui.ts"
   ]

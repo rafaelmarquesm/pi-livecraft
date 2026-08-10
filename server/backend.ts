@@ -54,6 +54,10 @@ import {
 import { parseValidatedWorkConfigUpdate } from './features/validated-work/validated-work-config.ts'
 import { extractValidatedWorkDetails } from './features/validated-work/validated-work-state.ts'
 import {
+  CodeReviewCoordinator,
+  type CodeReviewSessionContext,
+} from './features/code-review/review-coordinator.ts'
+import {
   loadSessionMeta,
   saveSessionMeta,
   validateSessionMeta,
@@ -84,6 +88,36 @@ const caches = new SnapshotCaches()
 const usageLedger = new UsageLedger()
 const auxiliaryUsageLedger = new AuxiliaryUsageLedger()
 const validatedWorkBaselines = new Map<string, ValidatedWorkBaseline>()
+const codeReviewCoordinator = new CodeReviewCoordinator({
+  manager: {
+    async runReview({ sessionId, packet, model, thinkingLevel }) {
+      return await manager.request({
+        action: 'run_review',
+        sessionId,
+        reviewPacket: packet as unknown as JsonObject,
+        model,
+        thinkingLevel,
+      }, 5 * 60_000) as never
+    },
+    async sendSummary(sessionId, summary) {
+      await manager.request({
+        action: 'command',
+        sessionId,
+        command: {
+          type: 'prompt',
+          message: `/livecraft-validated-work ${JSON.stringify(summary)}`,
+        },
+      })
+      await caches.refreshState(manager, sessionId)
+    },
+    async sendPrompt(sessionId, message) {
+      await manager.request({ action: 'command', sessionId, command: { type: 'prompt', message } })
+    },
+  },
+  onUpdate(sessionId, revision) {
+    broadcast({ kind: 'event', event: 'quality_review_updated', sessionId, data: { revision } })
+  },
+})
 const managerRuntime = new ManagerRuntimeMonitor(manager, (status) => {
   broadcast({ kind: 'event', event: 'manager_status', sessionId: '', data: status })
 })
@@ -601,6 +635,91 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
     return
   }
 
+  const reviewEstimateMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/reviews\/estimate$/)
+  if (method === 'GET' && reviewEstimateMatch) {
+    const context = await codeReviewContext(decodeURIComponent(reviewEstimateMatch[1]))
+    sendJson(response, 200, await codeReviewCoordinator.estimate(context))
+    return
+  }
+
+  const reviewsMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/reviews$/)
+  if (method === 'GET' && reviewsMatch) {
+    const session = await requireSession(decodeURIComponent(reviewsMatch[1]))
+    sendJson(response, 200, await codeReviewCoordinator.load(reviewIdentity(session)))
+    return
+  }
+  if (method === 'POST' && reviewsMatch) {
+    const context = await codeReviewContext(decodeURIComponent(reviewsMatch[1]))
+    const body = await readJsonBody(request)
+    const model = isModelBody(body.model)
+    if (!model) throw new HttpError(400, 'Reviewer model is required')
+    if (typeof body.thinkingLevel !== 'string' || body.thinkingLevel.trim() === '') {
+      throw new HttpError(400, 'Reviewer thinking level is required')
+    }
+    const mode = body.mode === 'automatic' ? 'automatic' : 'manual'
+    sendJson(
+      response,
+      202,
+      await codeReviewCoordinator.runManual(context, {
+        mode,
+        model,
+        thinkingLevel: body.thinkingLevel,
+      }),
+    )
+    return
+  }
+
+  const reviewFindingMatch = url.pathname.match(
+    /^\/api\/sessions\/([^/]+)\/reviews\/([^/]+)\/findings\/([^/]+)$/,
+  )
+  if (method === 'PATCH' && reviewFindingMatch) {
+    const sessionId = decodeURIComponent(reviewFindingMatch[1])
+    const session = await requireSession(sessionId)
+    const body = await readJsonBody(request)
+    if (
+      body.status !== 'confirmed' && body.status !== 'dismissed'
+      && body.status !== 'sent_to_agent' && body.status !== 'resolved'
+    ) throw new HttpError(400, 'Unsupported finding decision')
+    if (body.status === 'dismissed' && typeof body.reason !== 'string') {
+      throw new HttpError(400, 'Dismissal reason is required')
+    }
+    sendJson(
+      response,
+      200,
+      await codeReviewCoordinator.updateFinding(
+        { sessionId, ...reviewIdentity(session) },
+        decodeURIComponent(reviewFindingMatch[2]),
+        decodeURIComponent(reviewFindingMatch[3]),
+        {
+          status: body.status,
+          ...(typeof body.reason === 'string' ? { reason: body.reason } : {}),
+        },
+      ),
+    )
+    return
+  }
+
+  const reviewSendMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/reviews\/send$/)
+  if (method === 'POST' && reviewSendMatch) {
+    const sessionId = decodeURIComponent(reviewSendMatch[1])
+    const session = await requireSession(sessionId)
+    if (session.status !== 'idle')
+      throw new HttpError(409, 'Session must be idle to receive review findings')
+    const body = await readJsonBody(request)
+    if (!Array.isArray(body.findingIds) || !body.findingIds.every((id) => typeof id === 'string')) {
+      throw new HttpError(400, 'findingIds must be an array of ids')
+    }
+    sendJson(
+      response,
+      200,
+      await codeReviewCoordinator.sendFindings(
+        { sessionId, ...reviewIdentity(session) },
+        body.findingIds,
+      ),
+    )
+    return
+  }
+
   const exportMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/export$/)
   if (method === 'POST' && exportMatch) {
     const sessionId = decodeURIComponent(exportMatch[1])
@@ -743,6 +862,26 @@ async function requireSession(sessionId: string): Promise<SessionSummary> {
     : undefined
   if (!session) throw new HttpError(404, 'Session not found')
   return session
+}
+
+async function codeReviewContext(sessionId: string): Promise<CodeReviewSessionContext> {
+  const session = await requireSession(sessionId)
+  const cache = await caches.refresh(manager, sessionId)
+  const details = extractValidatedWorkDetails(sessionId, cache.entries).response
+  const baseline = validatedWorkBaselines.get(sessionId)
+  return {
+    sessionId,
+    ...reviewIdentity(session),
+    cwd: session.cwd,
+    details,
+    baseline: baseline
+      ? { baseSha: baseline.headSha, currentSha: baseline.headSha, dirty: baseline.initialDirty }
+      : null,
+  }
+}
+
+function reviewIdentity(session: SessionSummary): { sessionIdentity: string } {
+  return { sessionIdentity: session.sessionPath ?? `${session.cwd}:${session.id}` }
 }
 
 /** Reads the JSON body with a size limit to protect the backend from oversized requests. */
