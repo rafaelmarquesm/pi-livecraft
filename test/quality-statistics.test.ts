@@ -36,6 +36,7 @@ function trial(partial: Partial<QualityTrial>): QualityTrial {
     startedAt: '2026-01-01T00:00:00.000Z',
     taskId: 'task',
     taskRevision: 'rev',
+    taskFingerprint: 'fingerprint',
     timeToPassMs: null,
     tokens: { cacheRead: 0, cacheWrite: 0, input: 1, output: 1 },
     valid: true,

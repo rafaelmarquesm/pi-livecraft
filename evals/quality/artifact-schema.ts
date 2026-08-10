@@ -38,6 +38,7 @@ export interface QualityTrial {
   arm: QualityArm
   taskId: string
   taskRevision: string
+  taskFingerprint: string
   seed: string
   attempt: number
   valid: boolean
@@ -162,6 +163,7 @@ function parseTrial(value: unknown, index: number): QualityTrial {
       'arm',
       'taskId',
       'taskRevision',
+      'taskFingerprint',
       'seed',
       'attempt',
       'valid',
@@ -225,6 +227,7 @@ function parseTrial(value: unknown, index: number): QualityTrial {
     settledAt: stringField(value, 'settledAt', label),
     startedAt: stringField(value, 'startedAt', label),
     taskId: stringField(value, 'taskId', label),
+    taskFingerprint: stringField(value, 'taskFingerprint', label),
     taskRevision: stringField(value, 'taskRevision', label),
     timeToPassMs: nullableNumberField(value, 'timeToPassMs', label),
     tokens: {

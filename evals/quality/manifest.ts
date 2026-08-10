@@ -56,6 +56,7 @@ export interface QualityCampaignCell {
   arm: QualityArm
   taskId: string
   taskRevision: string
+  taskFingerprint: string
   seed: string
   promptHash: string
   attempts: number
@@ -142,7 +143,7 @@ function parseCell(value: unknown, index: number): QualityCampaignCell {
   if (!isRecord(value)) throw new Error(`${label} must be an object`)
   assertKeys(
     value,
-    ['id', 'arm', 'taskId', 'taskRevision', 'seed', 'promptHash', 'attempts'],
+    ['id', 'arm', 'taskId', 'taskRevision', 'taskFingerprint', 'seed', 'promptHash', 'attempts'],
     label,
   )
   const id = assertSafeIdentifier(stringField(value, 'id', label), `${label}.id`)
@@ -157,6 +158,7 @@ function parseCell(value: unknown, index: number): QualityCampaignCell {
     id,
     promptHash: stringField(value, 'promptHash', label),
     seed: assertSafeIdentifier(stringField(value, 'seed', label), `${label}.seed`),
+    taskFingerprint: stringField(value, 'taskFingerprint', label),
     taskId,
     taskRevision: stringField(value, 'taskRevision', label),
   }

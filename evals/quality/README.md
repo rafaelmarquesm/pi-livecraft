@@ -1,6 +1,6 @@
 # Agent Quality foundations
 
-This directory contains the offline foundations for reproducible quality campaigns. It does not run Pi, Livecraft, or paid model calls yet. The normal CI entry point is:
+This directory contains reproducible quality campaign foundations plus the first generated coding task suite. The normal CI entry point stays provider-free:
 
 ```bash
 npm run eval:quality:offline
@@ -15,7 +15,10 @@ npm run eval:quality:offline
 - `compare.ts` renders Markdown or JSON summaries while retaining raw trial IDs.
 - `redaction.ts` redacts credentials, auth headers, cookies, `.env` values, and home paths before artifact persistence.
 - `fingerprint.ts` provides deterministic JSON, file, and directory SHA-256 fingerprints plus results-root path confinement.
-- `drivers/fake.ts` is a deterministic offline driver. It intentionally makes the `livecraft-validated` arm worse than `livecraft-standard`, so tests and local smoke runs can prove the comparison path catches regressions.
+- `tasks/generated.ts` creates three deterministic temporary Git repositories from seeds: `parser-repair`, `state-cache`, and `api-persistence`. Public smoke tests are present in the repo; hidden graders are written only after the driver finishes the agent run.
+- `drivers/fake.ts` is a deterministic offline driver. It exercises the generated repos without a paid provider and intentionally makes the `livecraft-validated` arm worse than `livecraft-standard`, so tests and local smoke runs can prove the comparison path catches regressions.
+- `drivers/pi-direct.ts` runs generated tasks in a bounded disposable `pi --mode rpc --no-session` process and records requested versus observed provider, model, thinking, tokens, and cost.
+- `drivers/livecraft.ts` runs generated tasks through the local Livecraft HTTP API and manager path with bounded HTTP operations and the same requested/observed config capture.
 - `cli.ts` exposes local fake, validate, and compare commands.
 
 ## CLI examples
@@ -42,6 +45,8 @@ node evals/quality/cli.ts compare --k 3 --format json evals/quality/results/offl
 ## Rules
 
 - Invalid trials are reported and excluded from pass-rate denominators.
+- A generated task cell must record `taskRevision`, `taskFingerprint`, `seed`, and `promptHash`; validity gates reject task drift.
+- Hidden grader files are never present in the temporary repo before the agent run completes.
 - Wilson intervals are applied only to the raw success proportion, not to pass@k.
 - Do not claim a winner when any compared cell has fewer than three valid trials.
 - Campaign and artifact paths are resolved under the configured results root. Absolute paths and traversal are rejected.

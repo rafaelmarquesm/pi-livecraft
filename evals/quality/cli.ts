@@ -16,6 +16,12 @@ import {
 } from './fingerprint.ts'
 import { readQualityManifest, type QualityManifest } from './manifest.ts'
 import { runQualityCampaign } from './runner.ts'
+import {
+  GENERATED_TASK_IDS,
+  GENERATED_TASK_REVISION,
+  generatedTaskFingerprint,
+  generatedTaskPrompt,
+} from './tasks/generated.ts'
 
 function argValue(args: readonly string[], name: string, fallback: string | null = null): string {
   const index = args.indexOf(name)
@@ -41,29 +47,37 @@ function sampleManifest(campaignId: string): QualityManifest {
     pi: { executableSha256: sha256Text('fake-pi'), version: 'fake' },
     requested: { model: 'fake-model', provider: 'fake', thinking: 'none' },
   }
+  const cells = GENERATED_TASK_IDS.flatMap((taskId) => {
+    const seed = 'seed1'
+    const prompt = generatedTaskPrompt(taskId, seed)
+    const taskFingerprint = generatedTaskFingerprint(taskId, seed)
+    return [
+      {
+        arm: 'livecraft-standard' as const,
+        attempts: 3,
+        id: `standard-${taskId}-seed1`,
+        promptHash: sha256Text(prompt),
+        seed,
+        taskFingerprint,
+        taskId,
+        taskRevision: GENERATED_TASK_REVISION,
+      },
+      {
+        arm: 'livecraft-validated' as const,
+        attempts: 3,
+        id: `validated-${taskId}-seed1`,
+        promptHash: sha256Text(prompt),
+        seed,
+        taskFingerprint,
+        taskId,
+        taskRevision: GENERATED_TASK_REVISION,
+      },
+    ]
+  })
   return {
     ...base,
     campaignId,
-    cells: [
-      {
-        arm: 'livecraft-standard',
-        attempts: 3,
-        id: 'standard-parser-seed1',
-        promptHash: sha256Text('parser-repair'),
-        seed: 'seed1',
-        taskId: 'parser-repair',
-        taskRevision: 'fake-v1',
-      },
-      {
-        arm: 'livecraft-validated',
-        attempts: 3,
-        id: 'validated-parser-seed1',
-        promptHash: sha256Text('parser-repair'),
-        seed: 'seed1',
-        taskId: 'parser-repair',
-        taskRevision: 'fake-v1',
-      },
-    ],
+    cells,
     limits: { maxCostUsd: 1, maxTimeMs: 60_000, maxTurns: 4 },
     resources: { concurrency: 1 },
     review: {},

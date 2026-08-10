@@ -33,6 +33,7 @@ export function evaluateTrialValidity(
     addReason(reasons, matchingCell.arm !== trial.arm, 'settings_drift')
     addReason(reasons, matchingCell.taskId !== trial.taskId, 'settings_drift')
     addReason(reasons, matchingCell.taskRevision !== trial.taskRevision, 'settings_drift')
+    addReason(reasons, matchingCell.taskFingerprint !== trial.taskFingerprint, 'settings_drift')
     addReason(reasons, matchingCell.seed !== trial.seed, 'settings_drift')
   }
 
