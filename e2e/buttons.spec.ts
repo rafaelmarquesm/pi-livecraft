@@ -12,12 +12,23 @@ test.describe('primary controls', () => {
   })
 
   test('composer controls and an OpenAI model from the snapshot are visible', async ({ page }) => {
-    // CI has no personal provider credentials. Inject one deterministic model
-    // at the HTTP boundary: this tests the UI contract without depending on a
-    // developer's auth.json. Live auth is covered by the API smoke outside CI.
+    // CI has no personal provider credentials. Inject deterministic model and
+    // thinking state at the HTTP boundary: this tests UI reconciliation while
+    // the cache/command contract is covered by focused backend unit tests.
+    let thinkingLevel = 'off'
+    await page.route('**/api/sessions/*/commands', async (route) => {
+      const command = route.request().postDataJSON()
+      if (command?.type !== 'set_thinking_level') {
+        await route.continue()
+        return
+      }
+      thinkingLevel = String(command.level)
+      await route.fulfill({ json: { success: true, data: {} } })
+    })
     await page.route('**/api/sessions/*/snapshot', async (route) => {
       const response = await route.fetch()
       const body = await response.json()
+      body.state = { ...(body.state ?? {}), thinkingLevel }
       body.models = Array.isArray(body.models) ? body.models : []
       if (
         !body.models.some((model: { provider?: string; id?: string }) =>
