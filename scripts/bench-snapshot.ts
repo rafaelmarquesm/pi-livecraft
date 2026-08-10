@@ -5,9 +5,13 @@
  * measures cold vs warm snapshot latency against the running backend.
  *
  * Gates (spec §4.1):
- *   - warm bytes <= 5% of cold bytes
  *   - warm latency p50 < 200 ms
  *   - cold latency < 5 s
+ *   - warm latency is at least 5x faster than cold
+ *
+ * The HTTP response always contains the complete snapshot, so response byte
+ * ratio is informational. Incremental backend I/O is covered in
+ * test/snapshot-cache.test.ts.
  * (The "warm refresh == 1 RPC" gate is verified in-process by a unit test with
  *  PI_LIVECRAFT_DEBUG_RPC=1 — the counter lives in the backend's SnapshotCache.)
  *
@@ -148,6 +152,7 @@ async function main(): Promise<void> {
     ['warm at least 5x faster than cold', warmP50 * 5 < cold.ms],
   ]
   for (const [name, pass] of gates) console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}`)
+  if (gates.some(([, pass]) => !pass)) process.exitCode = 1
 
   // The "warm refresh == 1 RPC" gate is verified in-process (the counter lives
   // in the backend's SnapshotCache; a separate HTTP process cannot read it).
