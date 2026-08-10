@@ -7,6 +7,7 @@ import {
   exportSession,
   getGitFileDiff,
   getGitSnapshot,
+  getValidatedWork,
   getQuotas,
   getSessionMeta,
   improvePrompt,
@@ -22,6 +23,7 @@ import {
   savePrompt,
   sendPiCommand,
   subscribeManagerEvents,
+  updateValidatedWorkConfig,
 } from './api.ts'
 import { quotaRefreshAllowed } from '../shared/quota-refresh.ts'
 import { applyExtensionUiRequest, createExtensionUiState } from '../shared/extension-ui.ts'
@@ -35,6 +37,12 @@ import type {
   SessionMetaStore,
   SessionSummary,
 } from '../shared/types.ts'
+import type {
+  ValidatedWorkDetailsResponse,
+  ValidatedWorkMode,
+  ValidatedWorkStateV1,
+  ValidatedWorkSummaryV1,
+} from '../shared/validated-work.ts'
 import { isObject } from '../shared/is-object.ts'
 import { Composer } from './features/composer/Composer.tsx'
 import { ExtensionStatusBar } from './features/extension-ui/ExtensionStatusBar.tsx'
@@ -93,6 +101,12 @@ import {
 } from './features/commands/command-registry.ts'
 import { SettingsPanel } from './features/settings/SettingsPanel.tsx'
 import { ManagerRuntimeNotice } from './features/manager/ManagerRuntimeNotice.tsx'
+import { PlanApprovalDialog } from './features/quality/PlanApprovalDialog.tsx'
+import {
+  modeFromSummary,
+  parseQualitySummaryStatus,
+  qualityAcknowledgementKey,
+} from './features/quality/quality-state.ts'
 import {
   allThemes,
   applyThemePalette,
@@ -203,6 +217,15 @@ function App() {
         .getItem('pi-livecraft.git-sidebar-width'),
     )
   )
+  const [qualitySummaries, setQualitySummaries] = useState<
+    Record<string, ValidatedWorkSummaryV1 | null>
+  >({})
+  const [planDialogDismissedKey, setPlanDialogDismissedKey] = useState<string | null>(null)
+  const [planDialogDetails, setPlanDialogDetails] = useState<ValidatedWorkDetailsResponse | null>(
+    null,
+  )
+  const [planDialogLoading, setPlanDialogLoading] = useState(false)
+  const [pendingQualityMode, setPendingQualityMode] = useState<ValidatedWorkMode | null>(null)
 
   // Preferences and commands
   const [themePreferences, setThemePreferences] = useState(() => readThemePreferences())
@@ -749,6 +772,13 @@ function App() {
         void getQuotas().then(setQuotas).catch(() => undefined)
       }
       if (
+        event.type === 'extension_ui_request' && event.method === 'setStatus'
+        && event.statusKey === 'pi-livecraft.validated-work'
+      ) {
+        const summary = parseQualitySummaryStatus(event.statusText)
+        setQualitySummaries((current) => ({ ...current, [sessionId]: summary }))
+      }
+      if (
         event.type === 'extension_ui_request' && isBlockingDialog(event) && !isAgentSelector(event)
       ) {
         // Commit batched assistant deltas before a blocking dialog covers the conversation.
@@ -839,6 +869,12 @@ function App() {
           delete next[managerEvent.sessionId]
           return next
         })
+        setQualitySummaries((current) => {
+          if (!(managerEvent.sessionId in current)) return current
+          const next = { ...current }
+          delete next[managerEvent.sessionId]
+          return next
+        })
         decidersRef.current.delete(managerEvent.sessionId)
       }
       if (managerEvent.event === 'pi' && isObject(managerEvent.data))
@@ -867,6 +903,13 @@ function App() {
   const selectedSession = sessions.find((session) => session.id === selectedId)
   const selectedSessionId = selectedSession?.id
   const selectedSessionStatus = selectedSession?.status
+  const selectedQualitySummary = selectedSessionId
+    ? qualitySummaries[selectedSessionId] ?? null
+    : null
+  const selectedQualityMode = modeFromSummary(selectedQualitySummary)
+  const planDialogKey = selectedSessionId && selectedQualitySummary?.phase === 'awaiting_approval'
+    ? `${selectedSessionId}:${selectedQualitySummary.revision}`
+    : null
   const sessionIsLoading = Boolean(selectedSessionId && snapshotSessionId !== selectedSessionId)
 
   /** Forks the conversation from a user message, creating a new branch (Fase 3.1). */
@@ -922,6 +965,48 @@ function App() {
     return () => window.clearTimeout(loadingTimerRef.current)
   }, [selectedSessionId, sessionIsLoading])
 
+  useEffect(() => {
+    if (!selectedSessionId) return
+    let active = true
+    void getValidatedWork(selectedSessionId)
+      .then((result) => {
+        if (!active || result.status !== 'ok') return
+        setQualitySummaries((current) => ({
+          ...current,
+          [selectedSessionId]: result.data.summary,
+        }))
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [selectedSessionId])
+
+  useEffect(() => {
+    if (!selectedSessionId || !planDialogKey || planDialogDismissedKey === planDialogKey) {
+      setPlanDialogDetails(null)
+      return
+    }
+    let active = true
+    setPlanDialogLoading(true)
+    void getValidatedWork(selectedSessionId)
+      .then((result) => {
+        if (!active || result.status !== 'ok') return
+        setPlanDialogDetails(result.data)
+        setQualitySummaries((current) => ({
+          ...current,
+          [selectedSessionId]: result.data.summary,
+        }))
+      })
+      .catch((cause) => showToast('error', messageOf(cause)))
+      .finally(() => {
+        if (active) setPlanDialogLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [planDialogDismissedKey, planDialogKey, selectedSessionId, showToast])
+
   const liveActivity = selectedSession
     ? sessionActivity(activity, selectedSession.status, piConnection)
     : null
@@ -949,6 +1034,78 @@ function App() {
     if (command.type === 'compact') showToast('notice', 'Session compacted.')
     return result
   }, [refreshSnapshot, selectedId, showToast])
+
+  const applyQualityConfig = useCallback(
+    async (body: Parameters<typeof updateValidatedWorkConfig>[1]): Promise<void> => {
+      if (!selectedId) return
+      const result = await updateValidatedWorkConfig(selectedId, body)
+      setQualitySummaries((current) => ({ ...current, [selectedId]: result.data.summary }))
+      if (result.data.summary) setActiveRightWidget('quality')
+      else if (activeRightWidget === 'quality') setActiveRightWidget(null)
+    },
+    [activeRightWidget, selectedId],
+  )
+
+  const handleQualityModeChange = useCallback(
+    (mode: ValidatedWorkMode): void => {
+      if (!selectedId || selectedSessionStatus === 'running') return
+      if (mode === 'standard') {
+        void applyQualityConfig({ mode }).catch((cause) => showToast('error', messageOf(cause)))
+        return
+      }
+      if (window.localStorage.getItem(qualityAcknowledgementKey) !== 'yes') {
+        setPendingQualityMode(mode)
+        return
+      }
+      void applyQualityConfig({
+        mode,
+        limits: { maxExtraTurns: 2, maxAttributedCostUsd: 1 },
+      })
+        .catch((cause) => showToast('error', messageOf(cause)))
+    },
+    [applyQualityConfig, selectedId, selectedSessionStatus, showToast],
+  )
+
+  const confirmPendingQualityMode = useCallback((): void => {
+    const mode = pendingQualityMode
+    setPendingQualityMode(null)
+    if (!mode) return
+    window.localStorage.setItem(qualityAcknowledgementKey, 'yes')
+    void applyQualityConfig({
+      mode,
+      limits: { maxExtraTurns: 2, maxAttributedCostUsd: 1 },
+    })
+      .catch((cause) => showToast('error', messageOf(cause)))
+  }, [applyQualityConfig, pendingQualityMode, showToast])
+
+  const closePlanDialog = useCallback((): void => {
+    if (planDialogKey) setPlanDialogDismissedKey(planDialogKey)
+    setFocusComposerRequest((current) => current + 1)
+  }, [planDialogKey])
+
+  const handleApprovePlan = useCallback(async (): Promise<void> => {
+    await applyQualityConfig({ action: 'approve' })
+    setPlanDialogDismissedKey(planDialogKey)
+    setFocusComposerRequest((current) => current + 1)
+  }, [applyQualityConfig, planDialogKey])
+
+  const handleCancelQualityMode = useCallback(async (): Promise<void> => {
+    await applyQualityConfig({ mode: 'standard' })
+    setPlanDialogDismissedKey(planDialogKey)
+    setFocusComposerRequest((current) => current + 1)
+  }, [applyQualityConfig, planDialogKey])
+
+  const handleRequestPlanChanges = useCallback(
+    async (message: string): Promise<void> => {
+      if (!selectedId) return
+      const trimmed = message.trim()
+      if (!trimmed) return
+      await sendPiCommand(selectedId, { type: 'prompt', message: trimmed, images: [] })
+      setPlanDialogDismissedKey(planDialogKey)
+      setFocusComposerRequest((current) => current + 1)
+    },
+    [planDialogKey, selectedId],
+  )
   /** Sends the current draft with the behavior supported by the active session. */
   const handleComposerSend = useCallback(
     async (
@@ -1536,6 +1693,8 @@ function App() {
                       onImprovePrompt={handlePromptImprovement}
                       onSavePrompt={handleSavePrompt}
                       onError={handleConversationError}
+                      qualityMode={selectedQualityMode}
+                      onQualityModeChange={handleQualityModeChange}
                       requestedSelect={requestedSelect}
                       onSelectOpened={handleComposerSelectOpened}
                       submitRequest={submitRequest}
@@ -1602,6 +1761,8 @@ function App() {
         compactingSessionIds={compactingSessionIds}
         completedSessionIds={completedSessionIds}
         currentQuotaProvider={currentQuotaProvider}
+        qualityMode={selectedQualityMode}
+        qualitySummary={selectedQualitySummary}
         onAnalysisNavigate={navigateToAnalysisTarget}
         onResize={updateRightSidebarWidth}
         snapshot={gitSnapshot?.repository ? gitSnapshot : null}
@@ -1618,6 +1779,7 @@ function App() {
           await discardChanges(workspacePath, path)
         }}
         onPush={() => pushCommits(workspacePath)}
+        onQualityModeChange={handleQualityModeChange}
         onFileSelect={(path, commitHash) => getGitFileDiff(workspacePath, path, commitHash)}
         onQuotaRefresh={() => refreshSessionQuotas(selectedId, false)}
         onRefresh={() => refreshGit(workspacePath, true)}
@@ -1686,6 +1848,26 @@ function App() {
           title={confirmHost.title}
           onCancel={() => resolveConfirm(false)}
           onConfirm={() => resolveConfirm(true)}
+        />
+      )}
+      {pendingQualityMode && (
+        <ConfirmDialog
+          cancelLabel='Keep standard'
+          confirmLabel='Enable plan-first mode'
+          message={'Plan-first and Validated modes can add model cost after this prompt: up to 2 automatic follow-up turns, a $1.00 attributed automation budget, repeated session context on continuations, and a separate model call for independent review when review is enabled. You can change these later in Settings.'}
+          title='Enable experimental quality mode?'
+          onCancel={() => setPendingQualityMode(null)}
+          onConfirm={confirmPendingQualityMode}
+        />
+      )}
+      {planDialogKey && planDialogDismissedKey !== planDialogKey && (
+        <PlanApprovalDialog
+          loading={planDialogLoading}
+          state={(planDialogDetails?.state ?? null) as ValidatedWorkStateV1 | null}
+          onApprove={handleApprovePlan}
+          onCancelMode={handleCancelQualityMode}
+          onKeepPlanning={closePlanDialog}
+          onRequestChanges={handleRequestPlanChanges}
         />
       )}
       {exportDialogOpen && (

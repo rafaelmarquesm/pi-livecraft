@@ -426,6 +426,11 @@
   border-color: color-mix(in srgb, var(--warning) 38%, var(--line-strong));
   background: color-mix(in srgb, var(--warning) 9%, var(--surface));
 }
+.composer-select.quality:hover,
+.composer-select.quality[data-state="open"] {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--line-strong));
+  background: var(--accent-soft);
+}
 .composer-select.improve:hover,
 .composer-select.improve[data-state="open"] {
   border-color: color-mix(in srgb, var(--secondary) 38%, var(--line-strong));
@@ -505,6 +510,12 @@
 .composer-select.thinking .composer-select-icon {
   color: var(--warning);
 }
+.composer-select.quality .composer-select-icon {
+  color: var(--accent-hover);
+}
+.composer-select.quality .composer-select-icon::before {
+  content: "✓";
+}
 .composer-select.agent .composer-select-icon {
   color: var(--accent);
 }
@@ -555,6 +566,9 @@
 }
 .composer-select-content.thinking {
   border-color: color-mix(in srgb, var(--warning) 38%, var(--line-strong));
+}
+.composer-select-content.quality {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line-strong));
 }
 .composer-select-content.agent {
   border-color: color-mix(in srgb, var(--accent) 42%, var(--line-strong));

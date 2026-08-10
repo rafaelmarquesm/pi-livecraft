@@ -35,6 +35,8 @@ import { PromptSelect } from './selects/PromptSelect.tsx'
 import { ThinkingSelect } from './selects/ThinkingSelect.tsx'
 import { ComposerSelect } from './selects/ComposerSelect.tsx'
 import { ComposerStatusBar } from './status-bar/ComposerStatusBar.tsx'
+import { QualityModeSelect } from '../quality/QualityModeSelect.tsx'
+import type { ValidatedWorkMode } from '../../../shared/validated-work.ts'
 
 /** Static options for the Improve-prompt dropdown; hoisted to a module constant so the select never re-renders for it. */
 const improveOptions = [
@@ -66,6 +68,8 @@ export const Composer = memo(function Composer({
   onImprovePrompt,
   onSavePrompt,
   onError,
+  qualityMode,
+  onQualityModeChange,
   requestedSelect,
   onSelectOpened,
   submitRequest = 0,
@@ -110,6 +114,8 @@ export const Composer = memo(function Composer({
     content: string,
   ) => Promise<PromptTemplate>
   onError: (cause: unknown) => void
+  qualityMode: ValidatedWorkMode
+  onQualityModeChange: (mode: ValidatedWorkMode) => void
   requestedSelect?: 'agent' | 'model' | 'thinking' | null
   onSelectOpened?: () => void
   submitRequest?: number
@@ -139,7 +145,9 @@ export const Composer = memo(function Composer({
   const [suggestion, setSuggestion] = useState<
     { original: string; improved: string; cost?: number }
   >()
-  const [openSelect, setOpenSelect] = useState<'agent' | 'model' | 'thinking' | null>(null)
+  const [openSelect, setOpenSelect] = useState<'agent' | 'model' | 'quality' | 'thinking' | null>(
+    null,
+  )
   const formRef = useRef<HTMLFormElement>(null)
   const promptSaveDialogRef = useRef<HTMLDialogElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -147,6 +155,7 @@ export const Composer = memo(function Composer({
   const agentTriggerRef = useRef<HTMLButtonElement>(null)
   const modelTriggerRef = useRef<HTMLButtonElement>(null)
   const thinkingTriggerRef = useRef<HTMLButtonElement>(null)
+  const qualityTriggerRef = useRef<HTMLButtonElement>(null)
   const draftPersistTimerRef = useRef<number>(0)
   const [slashOpen, setSlashOpen] = useState(false)
   const [slashFilter, setSlashFilter] = useState('')
@@ -193,6 +202,10 @@ export const Composer = memo(function Composer({
   )
   const handleThinkingOpenChange = useCallback(
     (open: boolean) => setOpenSelect(open ? 'thinking' : null),
+    [],
+  )
+  const handleQualityOpenChange = useCallback(
+    (open: boolean) => setOpenSelect(open ? 'quality' : null),
     [],
   )
   const handlePromptOpenChange = useCallback(() => setOpenSelect(null), [])
@@ -643,6 +656,14 @@ export const Composer = memo(function Composer({
               open={openSelect === 'thinking'}
               onOpenChange={handleThinkingOpenChange}
               triggerRef={thinkingTriggerRef}
+            />
+            <QualityModeSelect
+              disabled={running}
+              onChange={onQualityModeChange}
+              onOpenChange={handleQualityOpenChange}
+              open={openSelect === 'quality'}
+              triggerRef={qualityTriggerRef}
+              value={qualityMode}
             />
             <Tooltip label='Insert a configured prompt'>
               <PromptSelect

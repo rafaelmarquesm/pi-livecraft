@@ -33,7 +33,7 @@ test('every registered right-sidebar widget has an explicit panel visibility pol
   for (const { id } of rightWidgetDefinitions) {
     assert.equal(isRightPanelVisible(id, available), true, `${id} should allocate panel width`)
   }
-  for (const id of ['quotas', 'usage', 'todo'] as const) {
+  for (const id of ['quality', 'quotas', 'usage', 'todo'] as const) {
     assert.equal(isRightPanelVisible(id, unavailable), true, `${id} is always available`)
   }
 })

@@ -18,11 +18,13 @@ import type {
 import { GitWidget } from '../git/GitWidget.tsx'
 import { QuotaWidget } from '../quotas/QuotaWidget.tsx'
 import { railQuota, type QuotaProvider } from '../quotas/quota-display.ts'
+import { QualityWidget } from '../quality/QualityWidget.tsx'
 import { SessionAnalysisWidget } from '../session-analysis/SessionAnalysisWidget.tsx'
 import type {
   SessionAnalysis,
   SessionAnalysisTarget,
 } from '../session-analysis/session-analysis.ts'
+import type { ValidatedWorkMode, ValidatedWorkSummaryV1 } from '../../../shared/validated-work.ts'
 import { TodoWidget } from '../todo/TodoWidget.tsx'
 import { loadTodos } from '../todo/todo-cache.ts'
 import { UsageWidget } from '../usage/UsageWidget.tsx'
@@ -51,6 +53,8 @@ export function RightSidebar({
   compactingSessionIds,
   completedSessionIds,
   currentQuotaProvider,
+  qualityMode,
+  qualitySummary,
   onAnalysisNavigate,
   onResize,
   snapshot,
@@ -63,6 +67,7 @@ export function RightSidebar({
   onDiscard,
   onFileSelect,
   onPush,
+  onQualityModeChange,
   onQuotaRefresh,
   onRefresh,
   onReset,
@@ -80,6 +85,8 @@ export function RightSidebar({
   compactingSessionIds: ReadonlySet<string>
   completedSessionIds: ReadonlySet<string>
   currentQuotaProvider: QuotaProvider | undefined
+  qualityMode: ValidatedWorkMode
+  qualitySummary: ValidatedWorkSummaryV1 | null
   onAnalysisNavigate: (target: SessionAnalysisTarget) => void
   onResize: (width: number) => void
   snapshot: GitSnapshot | null
@@ -92,6 +99,7 @@ export function RightSidebar({
   onDiscard: (path?: string) => Promise<void>
   onFileSelect: (path: string, commitHash?: string) => Promise<GitFileDiff>
   onPush: () => Promise<GitPushResult>
+  onQualityModeChange: (mode: ValidatedWorkMode) => void
   onQuotaRefresh: () => Promise<void>
   onRefresh: () => Promise<void>
   onReset: (hash: string) => Promise<GitResetResult>
@@ -232,6 +240,14 @@ export function RightSidebar({
               />
             )}
             {activeWidget === 'usage' && <UsageWidget workspacePath={workspacePath} />}
+            {activeWidget === 'quality' && (
+              <QualityWidget
+                mode={qualityMode}
+                onModeChange={onQualityModeChange}
+                sessionId={activeSessionId}
+                summary={qualitySummary}
+              />
+            )}
             {activeWidget === 'todo' && (
               <TodoWidget
                 activeSessionId={activeSessionId}
@@ -304,6 +320,21 @@ export function RightSidebar({
             {quotaSummary?.stale && <small>!</small>}
           </button>
         </Tooltip>
+        <Tooltip label='Quality plan and readiness'>
+          <button
+            aria-controls={activeWidget === 'quality' ? 'quality-panel' : undefined}
+            aria-expanded={activeWidget === 'quality'}
+            aria-label={activeWidget === 'quality'
+              ? 'Collapse quality panel'
+              : 'Expand quality panel'}
+            className='rail-tab'
+            onClick={() => onWidgetSelect('quality')}
+            type='button'
+          >
+            <span aria-hidden='true'>✓</span>
+            {qualitySummary && qualitySummary.phase === 'awaiting_approval' && <small>!</small>}
+          </button>
+        </Tooltip>
         <Tooltip label='Usage & inference metrics'>
           <button
             aria-controls={activeWidget === 'usage' ? 'usage-panel' : undefined}
@@ -362,5 +393,7 @@ function panelLabel(activeWidget: RightWidget | null): string {
     ? 'Provider quotas'
     : activeWidget === 'usage'
     ? 'Usage'
+    : activeWidget === 'quality'
+    ? 'Quality plan and readiness'
     : 'Git information'
 }

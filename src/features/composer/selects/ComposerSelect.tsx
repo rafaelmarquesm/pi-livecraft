@@ -23,7 +23,7 @@ export const ComposerSelect = memo(function ComposerSelect(
     onValueChange: (value: string) => void
     options: { description?: string; kind?: 'action'; label: string; value: string }[]
     placeholder?: string
-    tone: 'agent' | 'behavior' | 'command' | 'improve' | 'model' | 'prompt' | 'thinking'
+    tone: 'agent' | 'behavior' | 'command' | 'improve' | 'model' | 'prompt' | 'quality' | 'thinking'
     value: string
     loading?: boolean
     open?: boolean
@@ -80,7 +80,7 @@ export const ComposerSelect = memo(function ComposerSelect(
 /** Uses consistent SVG pictograms independent of a font or emoji set. */
 function ComposerSelectIcon(
   { tone }: {
-    tone: 'agent' | 'behavior' | 'command' | 'improve' | 'model' | 'prompt' | 'thinking'
+    tone: 'agent' | 'behavior' | 'command' | 'improve' | 'model' | 'prompt' | 'quality' | 'thinking'
   },
 ) {
   if (tone === 'model')

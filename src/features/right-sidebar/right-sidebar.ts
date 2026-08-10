@@ -1,6 +1,7 @@
 export const rightWidgetDefinitions = [
   { id: 'analysis', label: 'Session analysis' },
   { id: 'git', label: 'Git' },
+  { id: 'quality', label: 'Quality' },
   { id: 'quotas', label: 'Quotas' },
   { id: 'usage', label: 'Usage' },
   { id: 'todo', label: 'Todo' },
@@ -33,6 +34,8 @@ export function isRightPanelVisible(
       return availability.analysis
     case 'git':
       return availability.git
+    case 'quality':
+      return true
     case 'quotas':
     case 'usage':
     case 'todo':

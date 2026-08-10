@@ -83,6 +83,55 @@ export const REVIEW_SUMMARY_STATUSES = [
 ] as const
 export type ValidatedWorkReviewSummaryStatus = typeof REVIEW_SUMMARY_STATUSES[number]
 
+export const VALIDATED_WORK_SUMMARY_PROTOCOL = 'pi-livecraft.validated-work-summary'
+export const VALIDATED_WORK_SUMMARY_VERSION = 1
+
+export interface ValidatedWorkSummaryV1 {
+  protocol: typeof VALIDATED_WORK_SUMMARY_PROTOCOL
+  version: typeof VALIDATED_WORK_SUMMARY_VERSION
+  mode: ValidatedWorkMode
+  phase: WorkPhase
+  revision: number
+  counts: {
+    requirements: number
+    goals: number
+    items: number
+    completedItems: number
+    checks: Record<CheckStatus, number>
+    evidence: number
+  }
+  readiness: Readiness
+  blockers: string[]
+  automation: {
+    running: boolean
+    extraTurns: number
+    maxExtraTurns: number
+  }
+  review: {
+    status: string
+    openBlockers: number
+  }
+}
+
+export interface ValidatedWorkDetailsResponse {
+  state: ValidatedWorkStateV1 | null
+  summary: ValidatedWorkSummaryV1 | null
+  review: null
+  stale: boolean
+}
+
+export type ValidatedWorkConfigAction = 'approve' | 'reset' | 'abort_automation'
+
+export interface ValidatedWorkConfigUpdate {
+  mode?: ValidatedWorkMode
+  paused?: boolean
+  action?: ValidatedWorkConfigAction
+  limits?: {
+    maxExtraTurns?: number
+    maxAttributedCostUsd?: number
+  }
+}
+
 export interface ValidatedWorkRequirement {
   id: string
   text: string
@@ -279,6 +328,83 @@ export function parseValidatedWorkStateV1(value: unknown): ValidatedWorkStateV1 
 export function isValidatedWorkStateV1(value: unknown): value is ValidatedWorkStateV1 {
   try {
     parseValidatedWorkStateV1(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function parseValidatedWorkSummaryV1(value: unknown): ValidatedWorkSummaryV1 {
+  const root = objectWithKeys(value, '$', [
+    'protocol',
+    'version',
+    'mode',
+    'phase',
+    'revision',
+    'counts',
+    'readiness',
+    'blockers',
+    'automation',
+    'review',
+  ])
+  literal(root.protocol, VALIDATED_WORK_SUMMARY_PROTOCOL, '$.protocol')
+  literal(root.version, VALIDATED_WORK_SUMMARY_VERSION, '$.version')
+  const counts = objectWithKeys(root.counts, '$.counts', [
+    'requirements',
+    'goals',
+    'items',
+    'completedItems',
+    'checks',
+    'evidence',
+  ])
+  const checkCounts = objectWithKeys(counts.checks, '$.counts.checks', [
+    'pending',
+    'passed',
+    'failed',
+    'blocked',
+  ])
+  const automation = objectWithKeys(root.automation, '$.automation', [
+    'running',
+    'extraTurns',
+    'maxExtraTurns',
+  ])
+  const review = objectWithKeys(root.review, '$.review', ['status', 'openBlockers'])
+  return {
+    protocol: VALIDATED_WORK_SUMMARY_PROTOCOL,
+    version: VALIDATED_WORK_SUMMARY_VERSION,
+    mode: enumValue(root.mode, VALIDATED_WORK_MODES, '$.mode'),
+    phase: enumValue(root.phase, WORK_PHASES, '$.phase'),
+    revision: nonNegativeInteger(root.revision, '$.revision'),
+    counts: {
+      requirements: nonNegativeInteger(counts.requirements, '$.counts.requirements'),
+      goals: nonNegativeInteger(counts.goals, '$.counts.goals'),
+      items: nonNegativeInteger(counts.items, '$.counts.items'),
+      completedItems: nonNegativeInteger(counts.completedItems, '$.counts.completedItems'),
+      checks: {
+        pending: nonNegativeInteger(checkCounts.pending, '$.counts.checks.pending'),
+        passed: nonNegativeInteger(checkCounts.passed, '$.counts.checks.passed'),
+        failed: nonNegativeInteger(checkCounts.failed, '$.counts.checks.failed'),
+        blocked: nonNegativeInteger(checkCounts.blocked, '$.counts.checks.blocked'),
+      },
+      evidence: nonNegativeInteger(counts.evidence, '$.counts.evidence'),
+    },
+    readiness: enumValue(root.readiness, READINESS_STATES, '$.readiness'),
+    blockers: stringArray(root.blockers, '$.blockers', 20),
+    automation: {
+      running: booleanValue(automation.running, '$.automation.running'),
+      extraTurns: nonNegativeInteger(automation.extraTurns, '$.automation.extraTurns'),
+      maxExtraTurns: nonNegativeInteger(automation.maxExtraTurns, '$.automation.maxExtraTurns'),
+    },
+    review: {
+      status: textField(review, 'status', '$.review'),
+      openBlockers: nonNegativeInteger(review.openBlockers, '$.review.openBlockers'),
+    },
+  }
+}
+
+export function isValidatedWorkSummaryV1(value: unknown): value is ValidatedWorkSummaryV1 {
+  try {
+    parseValidatedWorkSummaryV1(value)
     return true
   } catch {
     return false

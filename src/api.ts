@@ -18,6 +18,10 @@ import type {
   WorkspaceFile,
 } from '../shared/types.ts'
 import { isObject } from '../shared/is-object.ts'
+import type {
+  ValidatedWorkConfigUpdate,
+  ValidatedWorkDetailsResponse,
+} from '../shared/validated-work.ts'
 
 const managerEventNames: readonly ManagerEvent['event'][] = [
   'session_created',
@@ -340,6 +344,54 @@ export async function runPrompt(sessionId: string, options: RunPromptOptions): P
     },
   )
   return result.text
+}
+
+export type ValidatedWorkFetchResult =
+  | { status: 'not-modified'; etag: string | null }
+  | { status: 'ok'; etag: string | null; data: ValidatedWorkDetailsResponse }
+
+export async function getValidatedWork(
+  sessionId: string,
+  etag?: string | null,
+): Promise<ValidatedWorkFetchResult> {
+  const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/validated-work`, {
+    headers: etag ? { 'If-None-Match': etag } : undefined,
+  })
+  if (response.status === 304) return { status: 'not-modified', etag: response.headers.get('ETag') }
+  const value: unknown = await response.json()
+  if (!response.ok) {
+    const message = isObject(value) && typeof value.error === 'string'
+      ? value.error
+      : `Request failed (${response.status})`
+    throw new Error(message)
+  }
+  return {
+    status: 'ok',
+    etag: response.headers.get('ETag'),
+    data: value as ValidatedWorkDetailsResponse,
+  }
+}
+
+export async function updateValidatedWorkConfig(
+  sessionId: string,
+  body: ValidatedWorkConfigUpdate,
+): Promise<{ etag: string | null; data: ValidatedWorkDetailsResponse }> {
+  const response = await fetch(
+    `/api/sessions/${encodeURIComponent(sessionId)}/validated-work/config`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  )
+  const value: unknown = await response.json()
+  if (!response.ok) {
+    const message = isObject(value) && typeof value.error === 'string'
+      ? value.error
+      : `Request failed (${response.status})`
+    throw new Error(message)
+  }
+  return { etag: response.headers.get('ETag'), data: value as ValidatedWorkDetailsResponse }
 }
 
 export async function sendPiCommand(sessionId: string, command: JsonObject): Promise<JsonObject> {

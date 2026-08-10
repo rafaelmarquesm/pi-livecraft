@@ -44,6 +44,12 @@ import {
 import { sessionToMarkdown } from './features/export/session-markdown.ts'
 import { readProcesses } from './features/process-monitor.ts'
 import {
+  captureValidatedWorkBaseline,
+  type ValidatedWorkBaseline,
+} from './features/validated-work/validated-work-baseline.ts'
+import { parseValidatedWorkConfigUpdate } from './features/validated-work/validated-work-config.ts'
+import { extractValidatedWorkDetails } from './features/validated-work/validated-work-state.ts'
+import {
   loadSessionMeta,
   saveSessionMeta,
   validateSessionMeta,
@@ -72,6 +78,7 @@ const distDirectory = fileURLToPath(new URL('../dist/', import.meta.url))
 const quotas = new QuotaService(manager)
 const caches = new SnapshotCaches()
 const usageLedger = new UsageLedger()
+const validatedWorkBaselines = new Map<string, ValidatedWorkBaseline>()
 const managerRuntime = new ManagerRuntimeMonitor(manager, (status) => {
   broadcast({ kind: 'event', event: 'manager_status', sessionId: '', data: status })
 })
@@ -82,6 +89,7 @@ manager.on('event', (event: ManagerEvent) => {
     liveSessionEvents.delete(event.sessionId)
     caches.clear(event.sessionId)
     sessionWorkspaces.delete(event.sessionId)
+    validatedWorkBaselines.delete(event.sessionId)
   }
   if (event.event === 'pi' && isObject(event.data)) {
     const sequence = ++piEventSequence
@@ -542,6 +550,48 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
     return
   }
 
+  const validatedWorkMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/validated-work$/)
+  if (method === 'GET' && validatedWorkMatch) {
+    const sessionId = decodeURIComponent(validatedWorkMatch[1])
+    await requireSession(sessionId)
+    const cache = await caches.refresh(manager, sessionId)
+    const details = extractValidatedWorkDetails(sessionId, cache.entries)
+    if (request.headers['if-none-match'] === details.etag) {
+      response.writeHead(304, { ETag: details.etag })
+      response.end()
+      return
+    }
+    sendJson(response, 200, details.response, { ETag: details.etag })
+    return
+  }
+
+  const validatedWorkConfigMatch = url.pathname.match(
+    /^\/api\/sessions\/([^/]+)\/validated-work\/config$/,
+  )
+  if (method === 'POST' && validatedWorkConfigMatch) {
+    const sessionId = decodeURIComponent(validatedWorkConfigMatch[1])
+    const body = await readJsonBody(request)
+    const session = await requireSession(sessionId)
+    let parsed
+    try {
+      parsed = parseValidatedWorkConfigUpdate(body)
+    } catch (error) {
+      throw new HttpError(400, errorMessage(error))
+    }
+    if (parsed.capturesBaseline) {
+      validatedWorkBaselines.set(sessionId, await captureValidatedWorkBaseline(session.cwd))
+    }
+    await manager.request({
+      action: 'command',
+      sessionId,
+      command: { type: 'prompt', message: `/livecraft-validated-work ${parsed.commandArgs}` },
+    })
+    const cache = await caches.refresh(manager, sessionId, { stateStats: true })
+    const details = extractValidatedWorkDetails(sessionId, cache.entries)
+    sendJson(response, 200, details.response, { ETag: details.etag })
+    return
+  }
+
   const exportMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/export$/)
   if (method === 'POST' && exportMatch) {
     const sessionId = decodeURIComponent(exportMatch[1])
@@ -674,6 +724,17 @@ async function listDirectories(path: string): Promise<DirectoryListing> {
   return { path: canonicalPath, parentPath: parent === canonicalPath ? null : parent, directories }
 }
 
+async function requireSession(sessionId: string): Promise<SessionSummary> {
+  const sessions = await manager.request({ action: 'list' })
+  const session = Array.isArray(sessions)
+    ? sessions.find((candidate): candidate is SessionSummary =>
+      isObject(candidate) && candidate.id === sessionId && typeof candidate.cwd === 'string'
+    )
+    : undefined
+  if (!session) throw new HttpError(404, 'Session not found')
+  return session
+}
+
 /** Reads the JSON body with a size limit to protect the backend from oversized requests. */
 async function readJsonBody(request: IncomingMessage): Promise<JsonObject> {
   const chunks: Buffer[] = []
@@ -741,8 +802,13 @@ function broadcast(event: unknown): void {
   for (const client of eventClients) client.write(frame)
 }
 
-function sendJson(response: ServerResponse, status: number, value: unknown): void {
-  response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
+function sendJson(
+  response: ServerResponse,
+  status: number,
+  value: unknown,
+  headers: Record<string, string> = {},
+): void {
+  response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', ...headers })
   response.end(JSON.stringify(value))
 }
 
