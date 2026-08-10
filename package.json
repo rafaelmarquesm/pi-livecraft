@@ -24,6 +24,7 @@
     "test:e2e:headed": "playwright test --headed",
     "eval:documentation-routing": "node --test evals/documentation-routing.ts",
     "eval:commit-message": "node --test evals/commit-message.ts",
+    "eval:quality:offline": "node --test test/quality-statistics.test.ts test/quality-validity.test.ts test/quality-redaction.test.ts",
     "bench:snapshot": "node scripts/bench-snapshot.ts",
     "bench:memory": "node scripts/bench-memory.ts",
     "preview": "vite preview --host 127.0.0.1",
