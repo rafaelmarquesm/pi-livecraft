@@ -27,6 +27,7 @@
     "eval:quality:offline": "node --test test/quality-statistics.test.ts test/quality-validity.test.ts test/quality-redaction.test.ts test/quality-generated-tasks.test.ts test/quality-drivers.test.ts",
     "bench:snapshot": "node scripts/bench-snapshot.ts",
     "bench:memory": "node scripts/bench-memory.ts",
+    "bench:quality": "node scripts/bench-quality.ts",
     "preview": "vite preview --host 127.0.0.1",
     "prepare": "husky"
   },

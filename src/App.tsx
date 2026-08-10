@@ -108,6 +108,11 @@ import {
   qualityAcknowledgementKey,
 } from './features/quality/quality-state.ts'
 import {
+  readQualitySettings,
+  resetQualityAcknowledgement,
+  writeQualitySettings,
+} from './features/quality/quality-settings.ts'
+import {
   allThemes,
   applyThemePalette,
   deleteTheme,
@@ -252,6 +257,9 @@ function App() {
   >()
   const [shortcuts, setShortcuts] = useState(() => readShortcuts())
   const [terminalCommand, setTerminalCommand] = useState(() => readTerminalCommand())
+  const [qualitySettings, setQualitySettings] = useState(() =>
+    readQualitySettings(window.localStorage)
+  )
 
   // Workspace and session synchronization
   const selectedIdRef = useRef(window.localStorage.getItem('pi-livecraft.selected-session') ?? '')
@@ -1078,11 +1086,21 @@ function App() {
       }
       void applyQualityConfig({
         mode,
-        limits: { maxExtraTurns: 2, maxAttributedCostUsd: 1 },
+        limits: {
+          maxAttributedCostUsd: qualitySettings.attributedBudgetUsd,
+          maxExtraTurns: qualitySettings.maxFollowups,
+        },
       })
         .catch((cause) => showToast('error', messageOf(cause)))
     },
-    [applyQualityConfig, selectedId, selectedSessionStatus, showToast],
+    [
+      applyQualityConfig,
+      qualitySettings.attributedBudgetUsd,
+      qualitySettings.maxFollowups,
+      selectedId,
+      selectedSessionStatus,
+      showToast,
+    ],
   )
 
   const confirmPendingQualityMode = useCallback((): void => {
@@ -1092,10 +1110,19 @@ function App() {
     window.localStorage.setItem(qualityAcknowledgementKey, 'yes')
     void applyQualityConfig({
       mode,
-      limits: { maxExtraTurns: 2, maxAttributedCostUsd: 1 },
+      limits: {
+        maxAttributedCostUsd: qualitySettings.attributedBudgetUsd,
+        maxExtraTurns: qualitySettings.maxFollowups,
+      },
     })
       .catch((cause) => showToast('error', messageOf(cause)))
-  }, [applyQualityConfig, pendingQualityMode, showToast])
+  }, [
+    applyQualityConfig,
+    pendingQualityMode,
+    qualitySettings.attributedBudgetUsd,
+    qualitySettings.maxFollowups,
+    showToast,
+  ])
 
   const closePlanDialog = useCallback((): void => {
     if (planDialogKey) setPlanDialogDismissedKey(planDialogKey)
@@ -1874,7 +1901,11 @@ function App() {
         <ConfirmDialog
           cancelLabel='Keep standard'
           confirmLabel='Enable plan-first mode'
-          message={'Plan-first and Validated modes can add model cost after this prompt: up to 2 automatic follow-up turns, a $1.00 attributed automation budget, repeated session context on continuations, and a separate model call for independent review when review is enabled. You can change these later in Settings.'}
+          message={`Plan-first and Validated modes can add model cost after this prompt: up to ${qualitySettings.maxFollowups} automatic follow-up ${
+            qualitySettings.maxFollowups === 1 ? 'turn' : 'turns'
+          }, a $${
+            qualitySettings.attributedBudgetUsd.toFixed(2)
+          } attributed automation budget, repeated session context on continuations, and a separate model call for independent review when review is enabled. You can change these later in Settings.`}
           title='Enable experimental quality mode?'
           onCancel={() => setPendingQualityMode(null)}
           onConfirm={confirmPendingQualityMode}
@@ -1939,8 +1970,17 @@ function App() {
           autoCompactionEnabled={autoCompactionEnabled}
           autoRetryEnabled={autoRetryBySession[selectedId] ?? false}
           capabilities={snapshot.capabilities}
+          qualitySettings={qualitySettings}
           onSetAutoCompaction={handleSetAutoCompaction}
           onSetAutoRetry={handleSetAutoRetry}
+          onQualitySettingsChange={(next) => {
+            setQualitySettings(next)
+            writeQualitySettings(window.localStorage, next)
+          }}
+          onResetQualityAcknowledgement={() => {
+            resetQualityAcknowledgement(window.localStorage)
+            showToast('notice', 'Quality first-use acknowledgement reset.')
+          }}
         />
       )}
     </div>

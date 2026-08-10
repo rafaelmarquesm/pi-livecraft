@@ -206,7 +206,8 @@
   font-size: 13px;
   color: var(--ink);
 }
-.terminal-command-row input {
+.terminal-command-row input,
+.terminal-command-row select {
   width: 100%;
   border: 1px solid var(--line-strong);
   border-radius: 7px;
@@ -216,7 +217,8 @@
   font: 12px ui-monospace, monospace;
   outline: 0;
 }
-.terminal-command-row input:focus {
+.terminal-command-row input:focus,
+.terminal-command-row select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 13%, transparent);
 }
@@ -229,6 +231,16 @@
 }
 .terminal-command-error {
   color: var(--danger) !important;
+}
+.quality-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 720px) {
+  .quality-settings-grid {
+    grid-template-columns: 1fr;
+  }
 }
 .settings-toggle-row {
   display: flex;

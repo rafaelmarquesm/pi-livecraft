@@ -1,8 +1,10 @@
 import { type ReactNode, useEffect, useState } from 'react'
 import * as Select from '@radix-ui/react-select'
 import type { PiCapabilities } from '../../../shared/types.ts'
+import type { ValidatedWorkMode } from '../../../shared/validated-work.ts'
 import type { CommandDefinition, CommandId } from '../commands/command-registry.ts'
 import { shortcutFromEvent, shortcutConflicts } from '../commands/command-registry.ts'
+import type { QualitySettings, QualityReviewerThinking } from '../quality/quality-settings.ts'
 import {
   applyThemePalette,
   contrastColor,
@@ -29,7 +31,7 @@ const themeVariableLabels: Record<ThemeVariable, string> = {
 // ── Tab registry ───────────────────────────────────────────────────
 
 /** Identifies a settings tab. Extend this union when adding a new tab. */
-export type SettingsTabId = 'themes' | 'terminal' | 'shortcuts' | 'session'
+export type SettingsTabId = 'themes' | 'terminal' | 'shortcuts' | 'session' | 'quality'
 
 /** Describes one tab in the settings modal. */
 export interface SettingsTabDefinition {
@@ -43,6 +45,7 @@ export const settingsTabs: SettingsTabDefinition[] = [
   { id: 'terminal', label: 'Terminal' },
   { id: 'shortcuts', label: 'Shortcuts' },
   { id: 'session', label: 'Pi session' },
+  { id: 'quality', label: 'Quality' },
 ]
 
 // ── Shared props ───────────────────────────────────────────────────
@@ -70,8 +73,11 @@ interface SettingsPanelProps {
   /** Optimistic write-only auto-retry preference for the selected session (E10). */
   autoRetryEnabled: boolean
   capabilities: PiCapabilities | null
+  qualitySettings: QualitySettings
   onSetAutoCompaction: (enabled: boolean) => void
   onSetAutoRetry: (enabled: boolean) => void
+  onQualitySettingsChange: (settings: QualitySettings) => void
+  onResetQualityAcknowledgement: () => void
 }
 
 // ── Section components ─────────────────────────────────────────────
@@ -586,6 +592,144 @@ function ProcessesSettings() {
   )
 }
 
+interface QualitySettingsSectionProps {
+  settings: QualitySettings
+  onChange: (settings: QualitySettings) => void
+  onResetAcknowledgement: () => void
+}
+
+function QualitySettingsSection(
+  { settings, onChange, onResetAcknowledgement }: QualitySettingsSectionProps,
+) {
+  const update = (patch: Partial<QualitySettings>): void => onChange({ ...settings, ...patch })
+  return (
+    <section className='quality-settings-tab'>
+      <h3>Validated Work defaults</h3>
+      <p>
+        Local quality preferences are stored in this browser only. They never include provider keys
+        or other secrets.
+      </p>
+      <label className='terminal-command-row'>
+        <span>Default mode</span>
+        <select
+          aria-label='Default quality mode'
+          onChange={(event) => update({ defaultMode: event.target.value as ValidatedWorkMode })}
+          value={settings.defaultMode}
+        >
+          <option value='standard'>Standard</option>
+          <option value='plan'>Plan first</option>
+          <option value='validated'>Validated</option>
+        </select>
+        <small>Standard remains the safe default and adds no model calls.</small>
+      </label>
+      <div className='quality-settings-grid'>
+        <label className='terminal-command-row'>
+          <span>Max automatic follow-up turns</span>
+          <input
+            aria-label='Max automatic follow-up turns'
+            max='5'
+            min='0'
+            onChange={(event) =>
+              update({ maxFollowups: clampNumber(event.target.valueAsNumber, 0, 5) })}
+            step='1'
+            type='number'
+            value={settings.maxFollowups}
+          />
+          <small>Allowed range: 0-5. Used when enabling Plan first or Validated mode.</small>
+        </label>
+        <label className='terminal-command-row'>
+          <span>Attributed automation budget (USD)</span>
+          <input
+            aria-label='Attributed automation budget in USD'
+            max='100'
+            min='0'
+            onChange={(event) =>
+              update({ attributedBudgetUsd: clampNumber(event.target.valueAsNumber, 0, 100) })}
+            step='0.01'
+            type='number'
+            value={settings.attributedBudgetUsd}
+          />
+          <small>Allowed range: 0-100. The lower session or quality budget wins.</small>
+        </label>
+      </div>
+      <h3>Independent review</h3>
+      <label className='settings-toggle-row'>
+        <span>
+          Automatic independent review
+          <small>Starts off. Manual review remains available from the Quality panel.</small>
+        </span>
+        <input
+          aria-label='Automatic independent review'
+          checked={settings.autoReview}
+          onChange={(event) => update({ autoReview: event.target.checked })}
+          role='switch'
+          type='checkbox'
+        />
+      </label>
+      <label className='terminal-command-row'>
+        <span>Reviewer model</span>
+        <input
+          aria-label='Reviewer model'
+          onChange={(event) => update({ reviewerModel: event.target.value.trim() || 'inherit' })}
+          placeholder='inherit'
+          value={settings.reviewerModel}
+        />
+        <small>
+          Use “inherit” to resolve the current session model at review start. Do not store secrets.
+        </small>
+      </label>
+      <label className='terminal-command-row'>
+        <span>Reviewer thinking</span>
+        <select
+          aria-label='Reviewer thinking'
+          onChange={(event) =>
+            update({ reviewerThinking: event.target.value as QualityReviewerThinking })}
+          value={settings.reviewerThinking}
+        >
+          <option value='low'>Low</option>
+          <option value='medium'>Medium</option>
+          <option value='high'>High</option>
+          <option value='max'>Max</option>
+        </select>
+      </label>
+      <label className='settings-toggle-row'>
+        <span>
+          Auto-send high findings
+          <small>
+            Experimental. Starts off and still requires budget confirmation before sending.
+          </small>
+        </span>
+        <input
+          aria-label='Auto-send high findings'
+          checked={settings.autoSendFindings}
+          onChange={(event) => update({ autoSendFindings: event.target.checked })}
+          role='switch'
+          type='checkbox'
+        />
+      </label>
+      <label className='settings-toggle-row'>
+        <span>
+          Retain review reports
+          <small>Keep local review reports for later comparison and export.</small>
+        </span>
+        <input
+          aria-label='Retain review reports'
+          checked={settings.retainReports}
+          onChange={(event) => update({ retainReports: event.target.checked })}
+          role='switch'
+          type='checkbox'
+        />
+      </label>
+      <button onClick={onResetAcknowledgement} type='button'>Reset acknowledgement</button>
+    </section>
+  )
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min
+  return Math.min(max, Math.max(min, value))
+}
+
 // ── Main panel ─────────────────────────────────────────────────────
 
 /** Configures local shortcuts, terminal behavior, and editable color themes. */
@@ -609,8 +753,11 @@ export function SettingsPanel({
   autoCompactionEnabled,
   autoRetryEnabled,
   capabilities,
+  qualitySettings,
   onSetAutoCompaction,
   onSetAutoRetry,
+  onQualitySettingsChange,
+  onResetQualityAcknowledgement,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<SettingsTabId>('themes')
   const [capturing, setCapturing] = useState<CommandId | null>(null)
@@ -721,6 +868,19 @@ export function SettingsPanel({
               <AboutSettings capabilities={capabilities} />
               <ProcessesSettings />
               <BudgetSettings />
+            </TabPanel>
+          )}
+          {activeTab === 'quality' && (
+            <TabPanel
+              key='quality'
+              id='settings-tab-quality'
+              labelledBy='settings-tab-btn-quality'
+            >
+              <QualitySettingsSection
+                onChange={onQualitySettingsChange}
+                onResetAcknowledgement={onResetQualityAcknowledgement}
+                settings={qualitySettings}
+              />
             </TabPanel>
           )}
         </section>
