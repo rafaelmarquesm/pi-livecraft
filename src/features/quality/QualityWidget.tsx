@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { getValidatedWork, listQualityCampaigns } from '../../api.ts'
 import type { QualityCampaignListItem } from '../../../shared/quality-campaigns.ts'
 import type {
@@ -29,26 +29,28 @@ export function QualityWidget({
   const [campaigns, setCampaigns] = useState<QualityCampaignListItem[]>([])
   const [campaignsError, setCampaignsError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'work' | 'campaigns'>('work')
-  const [details, setDetails] = useState<ValidatedWorkDetailsResponse | null>(null)
-  const [etag, setEtag] = useState<string | null>(null)
+  const [details, setDetails] = useState<
+    {
+      data: ValidatedWorkDetailsResponse
+      etag: string | null
+      sessionId: string
+    } | null
+  >(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const lastKey = useRef<string>('')
   const detailKey = `${sessionId}:${summary?.revision ?? 'standard'}`
+  const activeDetails = details?.sessionId === sessionId ? details : null
+  const activeEtag = activeDetails?.etag ?? null
 
   useEffect(() => {
     let cancelled = false
-    const needsFetch = lastKey.current !== detailKey
-    if (!needsFetch) return
-    lastKey.current = detailKey
     setLoading(true)
     setError(null)
-    void getValidatedWork(sessionId, etag)
+    void getValidatedWork(sessionId, activeEtag)
       .then((result) => {
         if (cancelled) return
         if (result.status === 'ok') {
-          setDetails(result.data)
-          setEtag(result.etag)
+          setDetails({ data: result.data, etag: result.etag, sessionId })
         }
       })
       .catch((cause) => {
@@ -60,7 +62,7 @@ export function QualityWidget({
     return () => {
       cancelled = true
     }
-  }, [detailKey, etag, sessionId])
+  }, [activeEtag, detailKey, sessionId])
 
   useEffect(() => {
     let cancelled = false
@@ -78,8 +80,8 @@ export function QualityWidget({
     }
   }, [])
 
-  const activeSummary = details?.summary ?? summary
-  const state = details?.state ?? null
+  const activeSummary = activeDetails?.data.summary ?? summary
+  const state = activeDetails?.data.state ?? null
   const phase = activeSummary ? phaseLabels[activeSummary.phase] : 'Standard'
   const modeLabel = qualityModes[mode].label
   const checkSummary = useMemo(() => {

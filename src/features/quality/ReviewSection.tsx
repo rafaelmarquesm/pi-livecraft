@@ -12,7 +12,12 @@ const severityRank = { P0: 0, P1: 1, P2: 2, P3: 3 } as const
 const confidenceRank = { high: 0, medium: 1, low: 2 } as const
 
 export function ReviewSection({ revision, sessionId }: { revision: number; sessionId: string }) {
-  const [details, setDetails] = useState<CodeReviewDetailsResponse | null>(null)
+  const [detailsState, setDetailsState] = useState<
+    {
+      details: CodeReviewDetailsResponse
+      sessionId: string
+    } | null
+  >(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [running, setRunning] = useState(false)
@@ -22,21 +27,30 @@ export function ReviewSection({ revision, sessionId }: { revision: number; sessi
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [dismissFinding, setDismissFinding] = useState<string | null>(null)
   const [dismissReason, setDismissReason] = useState('')
-  const [estimate, setEstimate] = useState<
-    { estimatedInputTokens: number; diffHash: string } | null
+  const [estimateState, setEstimateState] = useState<
+    {
+      estimate: { estimatedInputTokens: number; diffHash: string } | null
+      sessionId: string
+    } | null
   >(null)
   const [confirmSend, setConfirmSend] = useState(false)
+  const details = detailsState?.sessionId === sessionId ? detailsState.details : null
+  const estimate = estimateState?.sessionId === sessionId ? estimateState.estimate : null
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setError(null)
+    setSelected(new Set())
+    setDismissFinding(null)
+    setDismissReason('')
+    setConfirmSend(false)
     Promise
       .all([getCodeReviews(sessionId), estimateCodeReview(sessionId).catch(() => null)])
       .then(([reviewDetails, nextEstimate]) => {
         if (cancelled) return
-        setDetails(reviewDetails)
-        setEstimate(nextEstimate)
+        setDetailsState({ details: reviewDetails, sessionId })
+        setEstimateState({ estimate: nextEstimate, sessionId })
       })
       .catch((cause) => {
         if (!cancelled) setError(messageOf(cause))
@@ -61,7 +75,7 @@ export function ReviewSection({ revision, sessionId }: { revision: number; sessi
     .join('\n\n')
 
   async function refresh(next?: CodeReviewDetailsResponse): Promise<void> {
-    setDetails(next ?? await getCodeReviews(sessionId))
+    setDetailsState({ details: next ?? await getCodeReviews(sessionId), sessionId })
   }
 
   async function startReview(): Promise<void> {

@@ -3,6 +3,7 @@ import {
   approveState,
   buildSummary,
   createInitialState,
+  recordBudgetStop,
 } from '../pi-extensions/validated-work/state.ts'
 import type {
   QualityCampaignDetailResponse,
@@ -46,6 +47,19 @@ export function awaitingPlanDetails(): ValidatedWorkDetailsResponse {
 export function executingPlanDetails(): ValidatedWorkDetailsResponse {
   const awaiting = awaitingPlanDetails().state
   const state = awaiting ? approveState(awaiting, 4) : null
+  return { state, summary: state ? buildSummary(state) : null, review: null, stale: false }
+}
+
+export function budgetStoppedDetails(): ValidatedWorkDetailsResponse {
+  const executing = executingPlanDetails().state
+  const state = executing
+    ? recordBudgetStop(
+      executing,
+      'budget-stop',
+      'Stopped after reaching the configured automation budget.',
+      5,
+    )
+    : null
   return { state, summary: state ? buildSummary(state) : null, review: null, stale: false }
 }
 

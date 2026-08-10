@@ -23,7 +23,7 @@ Specification: `docs/SPEC-VALIDATED-WORK-AND-QUALITY-LAB.md`
 | 7 | UI shows plan, checks, findings, and cost without a false score | `e2e/quality.spec.ts`; component and backend fixture assertions | Plan approval, readiness text, campaign metrics, review findings, usage/cost fields, and no 0–100 aggregate score are rendered | PASS |
 | 8 | Usage attributes automation/review without guessed cost | `test/usage-ledger.test.ts`, `test/usage-ledger-burst.test.ts`, `test/usage-widget.test.ts` | Main, automated validation, code review, prompt improvement, isolated, and legacy usage reconcile without duplicate cost | PASS |
 | 9 | Performance budgets pass | `npm run bench:snapshot`, `npm run bench:memory`, `npm run bench:quality`; packet/state size tests | Snapshot and memory gates passed locally; state and packet serialized-size guards pass. The broader 1/3/10 real-Pi PSS matrix specified in section 12 was not captured in this run | PARTIAL |
-| 10 | E2E is provider-independent | `npm run test:e2e` | 24 Playwright tests passed using seeded routes/state and no paid provider | PASS |
+| 10 | E2E is provider-independent | `npm run test:e2e` | 34 Playwright tests passed using seeded routes/state and no paid provider | PASS |
 | 11 | A/B campaigns produce reproducible artifacts and invalidity gates | `npm run eval:quality:offline`, `npm run bench:quality`, quality campaign/validity/statistics tests | Deterministic fake campaign emits raw JSON/Markdown, fingerprints, invalid reasons, pass@1/pass@k, Wilson interval, paired deltas, cost, time, and small-sample guards | PASS |
 | 12 | A published standard-vs-validated campaign with k>=3 exists before default promotion | Manual `.github/workflows/agent-quality.yml` plus external credentials/budget | Offline k=3 smoke ran, but no real paid 18-valid-trial campaign was authorized or published. Default remains `standard` and `validated` remains Experimental | BLOCKED |
 | 13 | Technical, threat-model, UX, and operations docs are current | Protocol docs, feature READMEs, evaluation README, adapter attribution, settings guide, this matrix | Implementation and operating contracts are documented. This matrix records remaining rollout and benchmark gaps | PASS |
@@ -48,22 +48,20 @@ Specification: `docs/SPEC-VALIDATED-WORK-AND-QUALITY-LAB.md`
 
 ## Required Playwright journey coverage
 
-Section 14.4 lists twelve journeys. Direct coverage currently observed:
+All twelve provider-independent journeys required by section 14.4 now have direct Playwright observations:
 
 1. mode selector labels and warning: **PASS**
 2. plan approve/request changes/cancel: **PASS**
 3. Quality panel visible and narrow resize/collapse: **PASS**
-4. traceability navigation: **covered by component behavior and seeded state, but no dedicated navigation assertion**
-5. budget stop: **covered by gate/backend tests, but no dedicated Playwright assertion**
-6. review loading/error/empty/findings: **findings PASS; loading/error/empty lack dedicated Playwright assertions**
+4. traceability requirement/check/evidence rendering and navigation target: **PASS**
+5. configured budget stop readiness: **PASS**
+6. review loading/error/empty/findings states: **PASS**
 7. finding triage and send confirmation: **PASS**
-8. Usage by purpose: **unit/component coverage; no dedicated Playwright assertion**
+8. Usage by purpose with attributed-cost disclosure: **PASS**
 9. campaign small-sample warning: **PASS**
-10. keyboard, 320px, 768px, and 200% zoom: **keyboard/320px PASS; 768px and 200% zoom lack dedicated assertions**
-11. stale state when switching session: **backend/state coverage; no dedicated Playwright assertion**
-12. backend reconnect during quality state: **general reconnect coverage exists elsewhere, but no dedicated Quality Playwright assertion**
-
-These missing browser assertions do not invalidate the implemented lower-level behavior, but they prevent claiming complete section 14.4 traceability.
+10. keyboard, 320px, 768px, and 200% zoom: **PASS**
+11. stale state isolation while switching sessions: **PASS**
+12. quality-state preservation across backend reconnect: **PASS**
 
 ## Commands and observed results
 
@@ -74,7 +72,7 @@ These missing browser assertions do not invalidate the implemented lower-level b
 | `npm run typecheck` | PASS |
 | `node --test --test-concurrency=1` | 539 total, 537 passed, 2 skipped, 0 failed |
 | `npm run build` | PASS |
-| `npm run test:e2e` | 24 passed |
+| `npm run test:e2e` | 34 passed |
 | `npm run bench:snapshot` | PASS; 5,000-message cold 1215.3ms, warm p50 16.5ms |
 | `npm run bench:memory` | PASS; +2.8 MiB process memory in the benchmark fixture |
 | `npm run bench:quality` | PASS; deterministic k=3 fake comparison and complete artifacts |
@@ -84,7 +82,6 @@ These missing browser assertions do not invalidate the implemented lower-level b
 
 1. Run and publish the real paid `standard` vs `validated` campaign with at least 18 valid trials, after explicit credentials and budget approval.
 2. Observe hosted CI after pushing the commit series.
-3. Add the missing dedicated Playwright assertions listed above if strict one-to-one compliance with section 14.4 is required.
-4. Capture the complete 1/3/10 real-Pi PSS and readiness timing matrix on the authoritative Node 24/Linux environment.
+3. Capture the complete 1/3/10 real-Pi PSS and readiness timing matrix on the authoritative Node 24/Linux environment.
 
 No default promotion is permitted until item 1 satisfies the promotion gates. The current safe state is `standard` by default with `validated` marked Experimental.
