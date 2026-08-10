@@ -28,3 +28,9 @@ The tool supports `replace_plan`, `update_items`, `update_checks`, `link_evidenc
 ## Boundaries
 
 This step does not add frontend controls or backend config endpoints. The extension uses Pi's public extension API, changes only the active tool list, and does not write project files or call another model.
+
+## Performance matrix
+
+Run `npm run bench:validated-work` for the provider-independent section 12 budgets and real offline Pi RSS/PSS measurements at 1, 3, and 10 processes. Use `-- --skip-real-pi` when only the deterministic microbenchmarks are needed.
+
+The command fails concrete budgets for the standard-mode no-op handler, 5,000-entry cold and warmed incremental extraction, summary/full-state payloads, and the total review packet. Focused tests also enforce unchanged-diff review deduplication. It explicitly reports measurements that remain unsupported rather than inventing UI commit timings, retained V8 object sizes, full-stack readiness timings, or provider-backed token/cost data. PSS is reported only on hosts exposing `/proc/<pid>/smaps_rollup`; RSS remains available through `ps` on macOS and Linux.

@@ -13,6 +13,7 @@
     "server/features/usage/auxiliary-usage-ledger.ts",
     "pi-extensions/code-review.ts",
     "pi-extensions/validated-work/index.ts",
+    "pi-extensions/validated-work/handlers.ts",
     "pi-extensions/validated-work/schema.ts",
     "pi-extensions/validated-work/state.ts",
     "pi-extensions/validated-work/gates.ts",

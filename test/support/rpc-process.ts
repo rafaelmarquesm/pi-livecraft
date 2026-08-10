@@ -62,6 +62,11 @@ export class RpcProcess {
   #nextRequestId = 0
   #stderr = ''
 
+  /** Process id for resource measurements performed by integration benchmarks. */
+  get pid(): number | undefined {
+    return this.#child.pid
+  }
+
   constructor(options: RpcProcessOptions = {}) {
     const launcher = resolvePiLauncher()
     this.#child = spawn(launcher.command, [

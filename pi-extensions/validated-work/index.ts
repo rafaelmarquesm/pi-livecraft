@@ -6,11 +6,8 @@ import {
   enforcePlanningToolGate,
   restorePlanningTools,
 } from './gates.ts'
-import {
-  planningSystemPrompt,
-  validatedWorkPromptGuidelines,
-  validatedWorkPromptSnippet,
-} from './prompt.ts'
+import { validatedWorkPromptGuidelines, validatedWorkPromptSnippet } from './prompt.ts'
+import { beforeValidatedWorkAgentStart } from './handlers.ts'
 import {
   applyObservedEvidenceBatch,
   defaultConfig,
@@ -114,13 +111,7 @@ export default function registerValidatedWork(pi: ExtensionAPI): void {
   })
 
   pi.on('before_agent_start', () => {
-    if (
-      state.mode === 'standard'
-      || (state.phase !== 'planning' && state.phase !== 'awaiting_approval')
-    ) {
-      return undefined
-    }
-    return { systemPrompt: planningSystemPrompt }
+    return beforeValidatedWorkAgentStart(state)
   })
 
   pi.on('tool_call', (event) => {

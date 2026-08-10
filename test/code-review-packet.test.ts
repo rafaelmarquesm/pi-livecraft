@@ -9,6 +9,7 @@ import {
   buildCodeReviewPacket,
   isSecretPath,
   maxReviewDiffBytes,
+  maxReviewPacketBytes,
 } from '../server/features/code-review/packet-builder.ts'
 
 const exec = promisify(execFile)
@@ -55,8 +56,9 @@ test('truncates oversized diffs with an explicit manifest', async () => {
     sessionId: 's1',
     details: { state: null, summary: null, review: null, stale: false },
   })
-  assert.equal(packet.truncation.diffBytes, maxReviewDiffBytes)
+  assert.ok(packet.truncation.diffBytes < maxReviewDiffBytes)
   assert.equal(packet.truncation.omittedPaths.some((path) => path.reason === 'diff_limit'), true)
+  assert.ok(Buffer.byteLength(packet.packet) <= maxReviewPacketBytes)
 })
 
 test('recognizes common secret paths', () => {
