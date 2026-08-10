@@ -27,7 +27,7 @@ Specification: `docs/SPEC-VALIDATED-WORK-AND-QUALITY-LAB.md`
 | 11 | A/B campaigns produce reproducible artifacts and invalidity gates | `npm run eval:quality:offline`, `npm run bench:quality`, quality campaign/validity/statistics tests | Deterministic fake campaign emits raw JSON/Markdown, fingerprints, invalid reasons, pass@1/pass@k, Wilson interval, paired deltas, cost, time, and small-sample guards | PASS |
 | 12 | A published standard-vs-validated campaign with k>=3 exists before default promotion | Manual `.github/workflows/agent-quality.yml` plus external credentials/budget | Offline k=3 smoke ran, but no real paid 18-valid-trial campaign was authorized or published. Default remains `standard` and `validated` remains Experimental | BLOCKED |
 | 13 | Technical, threat-model, UX, and operations docs are current | Protocol docs, feature READMEs, evaluation README, adapter attribution, settings guide, this matrix | Implementation and operating contracts are documented. This matrix records remaining rollout and benchmark gaps | PASS |
-| 14 | Quality CI and E2E are green | Offline workflow definition; local format/lint/typecheck/unit/build/E2E runs | Local checks passed. Hosted CI was not observed because commits were not pushed | PARTIAL |
+| 14 | Quality CI and E2E are green | GitHub Actions CI run `31382125212`; local format/lint/typecheck/unit/build/E2E runs | Published `origin/main` commit `92c93c1` passed hosted Quality and E2E jobs. Hosted E2E reported 34 passed and one intentional benchmark-only skip | PASS |
 
 ## Public interface and integration-boundary checks
 
@@ -83,7 +83,6 @@ All twelve provider-independent journeys required by section 14.4 now have direc
 ## Remaining acceptance work
 
 1. Run and publish the real paid `standard` vs `validated` campaign with at least 18 valid trials, after explicit credentials and budget approval.
-2. Observe hosted CI after pushing the commit series.
-3. Provider-backed token delta and review latency remain part of the paid rollout. Full-stack manager/backend/browser-ready timing is reported separately from the explicit section-12 budgets.
+2. Provider-backed token delta and review latency remain part of that paid rollout. Full-stack manager/backend/browser-ready timing is reported separately from the explicit section-12 budgets.
 
 No default promotion is permitted until item 1 satisfies the promotion gates. The current safe state is `standard` by default with `validated` marked Experimental.
