@@ -37,6 +37,15 @@ async function main(): Promise<void> {
   )
   row('summary payload', `${core.summaryBytes} bytes`, '≤ 2,048 bytes', true)
   row('full state response', `${core.fullStatePayloadBytes} bytes`, '≤ 131,072 bytes', true)
+  row(
+    'aggregate heap per active quality state',
+    core.qualityStateHeapBytes === null
+      ? 'unsupported (run with --expose-gc)'
+      : `${(core.qualityStateHeapBytes / 1024).toFixed(1)} KiB`,
+    '< 1 MiB',
+    core.qualityStateHeapBytes === null
+      || core.qualityStateHeapBytes <= validatedWorkPerformanceBudgets.qualityStateHeapBytes,
+  )
   row('review packet', `${review.bytes} bytes`, '≤ 98,304 bytes', true)
   row('review packet build', `${review.buildMs.toFixed(1)} ms`, 'measurement only', true)
 

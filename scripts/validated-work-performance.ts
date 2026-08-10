@@ -36,13 +36,12 @@ export const validatedWorkPerformanceBudgets = {
   incrementalExtractionP95Ms: 10,
   summaryBytes: maxSummaryBytes,
   fullStatePayloadBytes: 128 * 1024,
+  qualityStateHeapBytes: 1024 * 1024,
   reviewPacketBytes: 96 * 1024,
 } as const
 
 export const unsupportedValidatedWorkMeasurements = [
   'mode standard token delta: requires a paired provider-backed prompt run; no provider data is fabricated',
-  'memory per active quality state: V8 does not expose deterministic retained size per object graph',
-  'UI quality update commit p95: requires browser React profiler instrumentation',
   'manager ready, backend ready, browser interactive, first session snapshot, and quality detail open: require a running full Livecraft stack',
   'provider-backed review latency, tokens, and cost: require an explicitly configured provider run',
 ] as const
@@ -54,6 +53,7 @@ export interface ValidatedWorkCorePerformance {
   summaryBytes: number
   fullStatePayloadBytes: number
   extractionEntries: number
+  qualityStateHeapBytes: number | null
 }
 
 export interface RealPiResourceMeasurement {
@@ -113,6 +113,7 @@ export function measureValidatedWorkCorePerformance(): ValidatedWorkCorePerforma
   const fullStatePayloadBytes = byteLength(
     JSON.stringify(extractValidatedWorkDetails('payload', entries, 0).response),
   )
+  const qualityStateHeapBytes = measureAggregateQualityStateHeapBytes()
 
   return {
     noopHandlerP95Ms,
@@ -121,7 +122,20 @@ export function measureValidatedWorkCorePerformance(): ValidatedWorkCorePerforma
     summaryBytes,
     fullStatePayloadBytes,
     extractionEntries: entries.length,
+    qualityStateHeapBytes,
   }
+}
+
+function measureAggregateQualityStateHeapBytes(): number | null {
+  const gc = (globalThis as { gc?: () => void }).gc
+  if (!gc) return null
+  gc()
+  const before = process.memoryUsage().heapUsed
+  const retained = Array.from({ length: 200 }, () => representativeFullState())
+  gc()
+  const after = process.memoryUsage().heapUsed
+  if (retained.length !== 200) throw new Error('Quality state memory fixture was not retained.')
+  return Math.max(0, after - before) / retained.length
 }
 
 /** Builds a deterministic oversized Git diff and verifies the bounded packet path without a model. */
@@ -400,6 +414,16 @@ export function assertValidatedWorkPerformanceBudgets(
   if (measurements.fullStatePayloadBytes > validatedWorkPerformanceBudgets.fullStatePayloadBytes) {
     failures.push(
       `full state ${measurements.fullStatePayloadBytes} bytes > ${validatedWorkPerformanceBudgets.fullStatePayloadBytes} bytes`,
+    )
+  }
+  if (
+    measurements.qualityStateHeapBytes !== null
+    && measurements.qualityStateHeapBytes > validatedWorkPerformanceBudgets.qualityStateHeapBytes
+  ) {
+    failures.push(
+      `quality state aggregate heap ${
+        measurements.qualityStateHeapBytes.toFixed(0)
+      } bytes > ${validatedWorkPerformanceBudgets.qualityStateHeapBytes} bytes`,
     )
   }
   if (measurements.extractionEntries !== extractionEntryCount) {
