@@ -22,7 +22,7 @@ Pi Livecraft is documented in layers: begin with the system you want to build on
 - **Send a command to a Pi session or inspect its data:** [how to talk to Pi](/docs/HOW-TO-TALK-TO-PI.md), which explains how to locate the upstream RPC reference installed with Pi.
 - **Run an isolated one-shot prompt without touching the session:** [how to run an isolated prompt](/docs/HOW-TO-RUN-ISOLATED-PROMPT.md).
 - **Change code loaded into Pi:** [Pi extensions](/pi-extensions/README.md).
-- **Measure model or harness quality:** [agent evaluation strategy](/docs/EVALUATION-STRATEGY.md).
+- **Measure model or harness quality:** [agent evaluation strategy](/docs/EVALUATION-STRATEGY.md), then the [implementation spec](/docs/SPEC-VALIDATED-WORK-AND-QUALITY-LAB.md).
 
 ## Implementation guides
 
@@ -39,5 +39,6 @@ Step-by-step walkthroughs for common tasks. Each guide is self-contained: start 
 - **[Talk to Pi](/docs/HOW-TO-TALK-TO-PI.md)** — send arbitrary RPC commands and understand the data Pi returns.
 - **[Run an isolated prompt](/docs/HOW-TO-RUN-ISOLATED-PROMPT.md)** — execute a one-shot prompt in a disposable Pi process.
 - **[Evaluate agent quality](/docs/EVALUATION-STRATEGY.md)** — deterministic graders, matched arms, validity gates, artifacts, variance, and harness experiments.
+- **[Implement Validated Work and Quality Lab](/docs/SPEC-VALIDATED-WORK-AND-QUALITY-LAB.md)** — phased technical spec for planning, evidence gates, review, token attribution, UI, performance, and rollout.
 
 Feature README files describe ownership, important constraints, and focused tests. Source files and shared TypeScript types remain authoritative for implementation details.

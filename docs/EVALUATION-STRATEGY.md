@@ -2,7 +2,9 @@
 
 This document defines how Pi Livecraft should measure model and harness quality, and records the
 comparison that motivated the design. It separates deterministic product tests from paid,
-stochastic agent evaluations: both are necessary, but they answer different questions.
+stochastic agent evaluations: both are necessary, but they answer different questions. The phased,
+file-level implementation contract is in
+[`SPEC-VALIDATED-WORK-AND-QUALITY-LAB.md`](/docs/SPEC-VALIDATED-WORK-AND-QUALITY-LAB.md).
 
 ## Scope and reviewed sources
 
