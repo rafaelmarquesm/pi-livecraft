@@ -332,3 +332,109 @@
     transition: none;
   }
 }
+
+.quality-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 4px;
+  background: var(--surface-raised);
+}
+.quality-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+.quality-tabs button[aria-selected="true"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.quality-tabs button:focus-visible,
+.quality-campaigns select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.quality-tabs small {
+  border-radius: 999px;
+  padding: 1px 5px;
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+  font-size: 10px;
+}
+.quality-campaigns,
+.quality-campaign-detail {
+  gap: 12px;
+}
+.quality-campaigns-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 10px;
+}
+.quality-campaigns-header p,
+.quality-campaign-detail p,
+.quality-campaign-table caption {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.quality-campaigns label {
+  display: grid;
+  gap: 4px;
+  color: var(--subtle);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.quality-campaigns select {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 8px;
+  background: var(--canvas);
+  color: var(--ink);
+}
+.quality-campaign-detail {
+  display: grid;
+}
+.quality-campaign-notice {
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.quality-campaign-table-wrap {
+  overflow-x: auto;
+}
+.quality-campaign-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.quality-campaign-table th,
+.quality-campaign-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 7px 5px;
+  text-align: left;
+  vertical-align: top;
+}
+.quality-campaign-table th {
+  color: var(--subtle);
+}

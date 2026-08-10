@@ -67,6 +67,12 @@ import { detectPiCapabilities } from './pi-capabilities.ts'
 import { piCommandMutatesState } from './pi-command-state.ts'
 import { externalWorkspacePath, openPath } from './system-integration.ts'
 import { expandHomePath } from './home-path.ts'
+import {
+  defaultQualityResultsRoot,
+  QualityCampaignNotFoundError,
+  QualityCampaignPathError,
+  QualityCampaignStore,
+} from './features/quality-campaigns/quality-campaign-store.ts'
 import type {
   DirectoryListing,
   JsonObject,
@@ -118,6 +124,7 @@ const codeReviewCoordinator = new CodeReviewCoordinator({
     broadcast({ kind: 'event', event: 'quality_review_updated', sessionId, data: { revision } })
   },
 })
+const qualityCampaigns = new QualityCampaignStore({ resultsRoot: defaultQualityResultsRoot() })
 const managerRuntime = new ManagerRuntimeMonitor(manager, (status) => {
   broadcast({ kind: 'event', event: 'manager_status', sessionId: '', data: status })
 })
@@ -290,6 +297,27 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
       200,
       rollupUsageRecords(await usageLedger.load(), cwd, await auxiliaryUsageLedger.load()),
     )
+    return
+  }
+
+  if (method === 'GET' && url.pathname === '/api/quality/campaigns') {
+    sendJson(response, 200, await qualityCampaigns.list())
+    return
+  }
+
+  const qualityCampaignMatch = url.pathname.match(/^\/api\/quality\/campaigns\/([^/]+)$/)
+  if (method === 'GET' && qualityCampaignMatch) {
+    try {
+      sendJson(
+        response,
+        200,
+        await qualityCampaigns.detail(decodeURIComponent(qualityCampaignMatch[1])),
+      )
+    } catch (error) {
+      if (error instanceof QualityCampaignNotFoundError) throw new HttpError(404, error.message)
+      if (error instanceof QualityCampaignPathError) throw new HttpError(400, error.message)
+      throw error
+    }
     return
   }
 

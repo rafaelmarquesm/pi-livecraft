@@ -1,8 +1,15 @@
 import { test, expect, type Page } from '@playwright/test'
 import { closeCurrentSession, openSeededSession } from './helpers.ts'
-import { awaitingPlanDetails, executingPlanDetails, standardDetails } from './quality-fixtures.ts'
+import {
+  awaitingPlanDetails,
+  campaignDetailFixture,
+  campaignListFixture,
+  executingPlanDetails,
+  standardDetails,
+} from './quality-fixtures.ts'
 
-async function installQualityRoutes(page: Page) {
+async function installQualityRoutes(page: Page, options: { campaigns?: boolean } = {}) {
+  const includeCampaigns = options.campaigns ?? true
   let details = standardDetails
   let reviewStatus = 'complete'
   const reviewDetails = () => ({
@@ -75,6 +82,12 @@ async function installQualityRoutes(page: Page) {
     if (route.request().method() === 'POST') reviewStatus = 'complete'
     await route.fulfill({ json: reviewDetails() })
   })
+  await page.route('**/api/quality/campaigns', async (route) => {
+    await route.fulfill({ json: includeCampaigns ? campaignListFixture : { campaigns: [] } })
+  })
+  await page.route('**/api/quality/campaigns/*', async (route) => {
+    await route.fulfill({ json: campaignDetailFixture })
+  })
   return { commands, getDetails: () => details }
 }
 
@@ -135,6 +148,30 @@ test.describe('quality plan-first workflow', () => {
 
     await expect.poll(() => quality.getDetails().summary).toBeNull()
     await expect(page.getByRole('dialog', { name: /Approve plan before execution/ })).toBeHidden()
+  })
+
+  test('hides campaign tab when no artifact exists', async ({ page }) => {
+    await installQualityRoutes(page, { campaigns: false })
+    await openSeededSession(page, ['quality no campaign fixture'])
+
+    await page.getByRole('button', { name: /Expand quality panel/ }).click()
+    await expect(page.getByRole('tab', { name: /Campaigns/ })).toHaveCount(0)
+  })
+
+  test('shows campaign artifact metrics only when campaign artifacts exist', async ({ page }) => {
+    await installQualityRoutes(page)
+    await openSeededSession(page, ['quality campaign fixture'])
+
+    await page.getByRole('button', { name: /Expand quality panel/ }).click()
+    await expect(page.getByRole('tab', { name: /Campaigns/ })).toBeVisible()
+    await page.getByRole('tab', { name: /Campaigns/ }).click()
+    await expect(page.getByRole('heading', { name: 'Campaigns' })).toBeVisible()
+    await expect(page.getByText('No winner: fewer than 3 valid trials per cell')).toBeVisible()
+    await expect(page.getByText('livecraft-standard vs livecraft-validated')).toBeVisible()
+    await expect(page.getByText('Wilson CI')).toBeVisible()
+    await expect(page.getByText('Paired deltas by task/seed')).toBeVisible()
+    await expect(page.getByText('Progress over time')).toBeVisible()
+    await expect(page.getByText('settings_drift: 1')).toBeVisible()
   })
 
   test('triages review findings and confirms selected send preview', async ({ page }) => {

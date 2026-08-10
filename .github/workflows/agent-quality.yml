@@ -1,0 +1,151 @@
+name: Agent Quality
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Provider to evaluate. Use fake for provider-free dry runs.
+        required: true
+        default: fake
+      model:
+        description: Model id requested by the campaign.
+        required: true
+        default: fake-model
+      thinking:
+        description: Thinking level requested by the campaign.
+        required: true
+        default: none
+      arms:
+        description: Comma-separated arms.
+        required: true
+        default: livecraft-standard,livecraft-validated
+      tasks:
+        description: Comma-separated task ids.
+        required: true
+        default: parser-repair,state-cache,api-persistence
+      k:
+        description: Trials per cell and pass@k value.
+        required: true
+        default: '3'
+      budget_usd:
+        description: Maximum provider spend in USD.
+        required: true
+        default: '1'
+      timeout_minutes:
+        description: Campaign timeout in minutes.
+        required: true
+        default: '30'
+      retention_days:
+        description: Uploaded artifact retention days.
+        required: true
+        default: '14'
+      campaign_id:
+        description: Safe campaign id.
+        required: true
+        default: manual-quality
+      dry_run:
+        description: Keep true for provider-free fake driver runs.
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  RESULTS_ROOT: evals/quality/results
+  CAMPAIGN_ID: ${{ inputs.campaign_id }}
+
+concurrency:
+  group: agent-quality-${{ inputs.provider }}
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    name: Manual quality campaign
+    runs-on: ubuntu-latest
+    environment: agent-quality
+    timeout-minutes: ${{ fromJSON(inputs.timeout_minutes) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate path-safe campaign id and inputs
+        run: |
+          set -euo pipefail
+          case "$CAMPAIGN_ID" in
+            *..*|/*|''|*[!A-Za-z0-9._:-]*)
+              echo "Invalid campaign id: $CAMPAIGN_ID" >&2
+              exit 2
+              ;;
+          esac
+          case "${{ inputs.k }}" in (*[!0-9]*|'') echo "k must be numeric" >&2; exit 2;; esac
+          case "${{ inputs.budget_usd }}" in (*[!0-9.]*|'') echo "budget must be numeric" >&2; exit 2;; esac
+          mkdir -p "$RESULTS_ROOT/$CAMPAIGN_ID"
+
+      - name: Run provider-free fake quality campaign
+        if: ${{ inputs.dry_run || inputs.provider == 'fake' }}
+        run: |
+          set -euo pipefail
+          node evals/quality/cli.ts fake --campaign-id "$CAMPAIGN_ID" --results-root "$RESULTS_ROOT"
+          node evals/quality/cli.ts compare --k "${{ inputs.k }}" --format markdown "$RESULTS_ROOT/$CAMPAIGN_ID/artifact.json" \
+            > "$RESULTS_ROOT/$CAMPAIGN_ID/summary.md"
+
+      - name: Refuse unimplemented paid provider path safely
+        if: ${{ !inputs.dry_run && inputs.provider != 'fake' }}
+        run: |
+          set -euo pipefail
+          echo "Paid provider execution is intentionally not wired in this scaffold." | tee "$RESULTS_ROOT/$CAMPAIGN_ID/summary.md"
+          exit 3
+
+      - name: Redact artifacts before upload
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          if [ -d "$RESULTS_ROOT/$CAMPAIGN_ID" ]; then
+            find "$RESULTS_ROOT/$CAMPAIGN_ID" -type f -maxdepth 3 -print0 | xargs -0 -r sed -i \
+              -e 's/sk-[A-Za-z0-9_-]\{16,\}/[REDACTED_API_KEY]/g' \
+              -e 's/Authorization: Bearer [A-Za-z0-9._-]\+/Authorization: Bearer [REDACTED]/g' \
+              -e 's/"access_token":"[^"]\+"/"access_token":"[REDACTED]"/g'
+          fi
+
+      - name: Write job summary
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          {
+            echo "# Agent Quality Campaign"
+            echo
+            echo "Provider: ${{ inputs.provider }}"
+            echo "Model: ${{ inputs.model }}"
+            echo "Thinking: ${{ inputs.thinking }}"
+            echo "Arms: ${{ inputs.arms }}"
+            echo "Tasks: ${{ inputs.tasks }}"
+            echo "k: ${{ inputs.k }}"
+            echo "Budget USD: ${{ inputs.budget_usd }}"
+            echo "Campaign: $CAMPAIGN_ID"
+            echo
+            if [ -f "$RESULTS_ROOT/$CAMPAIGN_ID/summary.md" ]; then
+              cat "$RESULTS_ROOT/$CAMPAIGN_ID/summary.md"
+            else
+              echo "No campaign summary was produced. See uploaded logs/artifacts."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload campaign artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-quality-${{ inputs.campaign_id }}
+          path: evals/quality/results/${{ inputs.campaign_id }}
+          if-no-files-found: warn
+          retention-days: ${{ fromJSON(inputs.retention_days) }}

@@ -31,6 +31,11 @@ import type {
   ValidatedWorkDetailsResponse,
 } from '../shared/validated-work.ts'
 
+import type {
+  QualityCampaignDetailResponse,
+  QualityCampaignListResponse,
+} from '../shared/quality-campaigns.ts'
+
 const managerEventNames: readonly ManagerEvent['event'][] = [
   'session_created',
   'session_exited',
@@ -402,6 +407,16 @@ export async function updateValidatedWorkConfig(
     throw new Error(message)
   }
   return { etag: response.headers.get('ETag'), data: value as ValidatedWorkDetailsResponse }
+}
+
+export async function listQualityCampaigns(): Promise<QualityCampaignListResponse> {
+  return await request<QualityCampaignListResponse>('/api/quality/campaigns')
+}
+
+export async function getQualityCampaign(id: string): Promise<QualityCampaignDetailResponse> {
+  return await request<QualityCampaignDetailResponse>(
+    `/api/quality/campaigns/${encodeURIComponent(id)}`,
+  )
 }
 
 export async function getCodeReviews(sessionId: string): Promise<CodeReviewDetailsResponse> {

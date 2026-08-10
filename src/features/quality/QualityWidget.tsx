@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { getValidatedWork } from '../../api.ts'
+import { getValidatedWork, listQualityCampaigns } from '../../api.ts'
+import type { QualityCampaignListItem } from '../../../shared/quality-campaigns.ts'
 import type {
   ValidatedWorkDetailsResponse,
   ValidatedWorkMode,
   ValidatedWorkSummaryV1,
 } from '../../../shared/validated-work.ts'
 import { phaseLabels, qualityModes } from './quality-display.ts'
+import { CampaignsSection } from './CampaignsSection.tsx'
 import { PlanSection } from './PlanSection.tsx'
 import { ReadinessCard } from './ReadinessCard.tsx'
 import { ReviewSection } from './ReviewSection.tsx'
@@ -24,6 +26,9 @@ export function QualityWidget({
   sessionId: string
   summary: ValidatedWorkSummaryV1 | null
 }) {
+  const [campaigns, setCampaigns] = useState<QualityCampaignListItem[]>([])
+  const [campaignsError, setCampaignsError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'work' | 'campaigns'>('work')
   const [details, setDetails] = useState<ValidatedWorkDetailsResponse | null>(null)
   const [etag, setEtag] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -57,6 +62,22 @@ export function QualityWidget({
     }
   }, [detailKey, etag, sessionId])
 
+  useEffect(() => {
+    let cancelled = false
+    void listQualityCampaigns()
+      .then(({ campaigns: nextCampaigns }) => {
+        if (cancelled) return
+        setCampaigns(nextCampaigns)
+        if (nextCampaigns.length === 0) setActiveTab('work')
+      })
+      .catch((cause) => {
+        if (!cancelled) setCampaignsError(cause instanceof Error ? cause.message : String(cause))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const activeSummary = details?.summary ?? summary
   const state = details?.state ?? null
   const phase = activeSummary ? phaseLabels[activeSummary.phase] : 'Standard'
@@ -86,10 +107,43 @@ export function QualityWidget({
       <p className='quality-widget-summary'>{checkSummary}</p>
       {loading && <p className='quality-muted'>Loading quality details…</p>}
       {error && <p className='quality-error' role='alert'>{error}</p>}
-      <ReadinessCard state={state} summary={activeSummary} />
-      <PlanSection state={state} />
-      <TraceabilitySection state={state} />
-      <ReviewSection revision={reviewRevision} sessionId={sessionId} />
+      {campaigns.length > 0 && (
+        <div className='quality-tabs' role='tablist' aria-label='Quality sections'>
+          <button
+            aria-selected={activeTab === 'work'}
+            onClick={() =>
+              setActiveTab('work')}
+            role='tab'
+            type='button'
+          >
+            Work
+          </button>
+          <button
+            aria-selected={activeTab === 'campaigns'}
+            onClick={() =>
+              setActiveTab('campaigns')}
+            role='tab'
+            type='button'
+          >
+            Campaigns
+            <small>
+              {campaigns
+                .length}
+            </small>
+          </button>
+        </div>
+      )}
+      {campaignsError && <p className='quality-error' role='alert'>{campaignsError}</p>}
+      {activeTab === 'work'
+        ? (
+          <>
+            <ReadinessCard state={state} summary={activeSummary} />
+            <PlanSection state={state} />
+            <TraceabilitySection state={state} />
+            <ReviewSection revision={reviewRevision} sessionId={sessionId} />
+          </>
+        )
+        : <CampaignsSection campaigns={campaigns} />}
     </div>
   )
 }

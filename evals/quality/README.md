@@ -20,6 +20,8 @@ npm run eval:quality:offline
 - `drivers/pi-direct.ts` runs generated tasks in a bounded disposable `pi --mode rpc --no-session` process and records requested versus observed provider, model, thinking, tokens, and cost.
 - `drivers/livecraft.ts` runs generated tasks through the local Livecraft HTTP API and manager path with bounded HTTP operations and the same requested/observed config capture.
 - `cli.ts` exposes local fake, validate, and compare commands.
+- `adapters/jcode-bench.ts` and `adapters/harbor.ts` build bounded opt-in external-suite plans without starting providers.
+- `ADAPTER-ATTRIBUTION.md` records attribution, license, and claims rules for external suites.
 
 ## CLI examples
 

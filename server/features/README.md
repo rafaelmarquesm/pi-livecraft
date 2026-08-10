@@ -8,6 +8,7 @@ This directory contains local product capabilities used by `server/backend.ts`. 
 - [`terminal/`](/server/features/terminal/README.md) launches an external terminal application in the workspace directory.
 - [`todos/`](/server/features/todos/README.md) persists workspace task lists.
 - [`validated-work/`](/server/features/validated-work/README.md) reconstructs plan-first state, config forwarding, and Git baselines for the Quality UI.
+- `quality-campaigns/` reads path-confined Agent Quality artifacts for the Quality Campaigns UI without owning HTTP routes.
 
 These modules do not own Pi processes. All Pi commands continue through `server/manager-client.ts` to `server/manager.ts`.
 
