@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Profiler, type ProfilerOnRenderCallback, useEffect, useMemo, useState } from 'react'
 import { getValidatedWork, listQualityCampaigns } from '../../api.ts'
 import type { QualityCampaignListItem } from '../../../shared/quality-campaigns.ts'
 import type {
@@ -13,19 +13,48 @@ import { ReadinessCard } from './ReadinessCard.tsx'
 import { ReviewSection } from './ReviewSection.tsx'
 import { TraceabilitySection } from './TraceabilitySection.tsx'
 
-export function QualityWidget({
-  mode,
-  onModeChange,
-  reviewRevision,
-  sessionId,
-  summary,
-}: {
+interface QualityWidgetProps {
   mode: ValidatedWorkMode
   onModeChange: (mode: ValidatedWorkMode) => void
   reviewRevision: number
   sessionId: string
   summary: ValidatedWorkSummaryV1 | null
-}) {
+}
+
+interface QualityBenchmarkWindow extends Window {
+  __PI_LIVECRAFT_QUALITY_BENCHMARK__?: {
+    commits: Array<{
+      actualDuration: number
+      baseDuration: number
+      commitTime: number
+      phase: string
+      startTime: number
+    }>
+  }
+}
+
+const recordQualityCommit: ProfilerOnRenderCallback = (
+  _id,
+  phase,
+  actualDuration,
+  baseDuration,
+  startTime,
+  commitTime,
+) => {
+  if (phase === 'mount') return
+  const benchmark = (window as QualityBenchmarkWindow).__PI_LIVECRAFT_QUALITY_BENCHMARK__ ??= {
+    commits: [],
+  }
+  benchmark.commits.push({ actualDuration, baseDuration, commitTime, phase, startTime })
+}
+
+function QualityWidgetContent({
+  mode,
+  onModeChange,
+  reviewRevision,
+  sessionId,
+  summary,
+}: QualityWidgetProps) {
   const [campaigns, setCampaigns] = useState<QualityCampaignListItem[]>([])
   const [campaignsError, setCampaignsError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'work' | 'campaigns'>('work')
@@ -149,3 +178,15 @@ export function QualityWidget({
     </div>
   )
 }
+
+function ProfiledQualityWidget(props: QualityWidgetProps) {
+  return (
+    <Profiler id='QualityWidget' onRender={recordQualityCommit}>
+      <QualityWidgetContent {...props} />
+    </Profiler>
+  )
+}
+
+export const QualityWidget = import.meta.env.VITE_QUALITY_BENCHMARK === '1'
+  ? ProfiledQualityWidget
+  : QualityWidgetContent

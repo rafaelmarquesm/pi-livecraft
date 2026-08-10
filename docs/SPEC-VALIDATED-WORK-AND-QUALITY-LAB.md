@@ -1158,6 +1158,20 @@ Também adicionar benchmark PSS de 1/3/10 sessões Pi ativas e medir:
 
 Não afirmar melhoria se benchmark só mede backend sem Pi children.
 
+### 12.1 Quality UI commit benchmark
+
+Run `npm run bench:quality-ui`. The command starts an isolated offline Playwright stack, enables
+React Profiler instrumentation only for that frontend process, warms the widget, then alternates
+`Plan first` and `Validated` through the real mode control and `QualityWidget` detail-refresh path.
+The benchmark uses the normal executing-plan fixture, requires at least 40 measured update commits,
+and fails when the nearest-rank p95 React `actualDuration` is not below 16 ms. It does not contact a
+model provider, and normal development and production builds do not install the profiler wrapper or
+publish telemetry.
+
+Limitation: React `actualDuration` measures render work attributed to each committed update. It does
+not include browser paint, layout, network latency, or end-to-end interaction latency, so those need
+separate browser performance coverage.
+
 ## 13. Impacto esperado em tokens e custo
 
 ### Standard

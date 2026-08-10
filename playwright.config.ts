@@ -5,9 +5,12 @@ import { defineConfig, devices } from '@playwright/test'
 // session creation, fork points, search, and export (see spec §2.0).
 // Keep E2E isolated from the user's live dev stack. Dedicated defaults avoid
 // false positives where Playwright silently talks to an orphan on 43120/43121.
-const vitePort = process.env.PI_LIVECRAFT_E2E_VITE_PORT ?? '45173'
-const backendPort = process.env.PI_LIVECRAFT_E2E_BACKEND_PORT ?? '45121'
-const managerPort = process.env.PI_LIVECRAFT_E2E_MANAGER_PORT ?? '45120'
+const qualityBenchmark = process.env.PI_LIVECRAFT_QUALITY_BENCHMARK === '1'
+const vitePort = process.env.PI_LIVECRAFT_E2E_VITE_PORT ?? (qualityBenchmark ? '45273' : '45173')
+const backendPort = process.env.PI_LIVECRAFT_E2E_BACKEND_PORT
+  ?? (qualityBenchmark ? '45221' : '45121')
+const managerPort = process.env.PI_LIVECRAFT_E2E_MANAGER_PORT
+  ?? (qualityBenchmark ? '45220' : '45120')
 const baseURL = `http://127.0.0.1:${vitePort}`
 
 export default defineConfig({
@@ -32,7 +35,7 @@ export default defineConfig({
     // Wait on the backend health route through the Vite proxy so we know both
     // the frontend and the backend are up before the first test.
     url: `${baseURL}/api/health`,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !process.env.CI && !qualityBenchmark,
     timeout: 180_000,
     env: {
       ...process.env,
@@ -40,6 +43,7 @@ export default defineConfig({
       PI_LIVECRAFT_VITE_PORT: vitePort,
       PI_LIVECRAFT_BACKEND_PORT: backendPort,
       PI_LIVECRAFT_MANAGER_PORT: managerPort,
+      VITE_QUALITY_BENCHMARK: qualityBenchmark ? '1' : '0',
     },
     stdout: 'pipe',
     stderr: 'pipe',
