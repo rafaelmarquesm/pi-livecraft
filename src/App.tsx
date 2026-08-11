@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react'
 import './App.css'
 import {
   commitChanges,
@@ -44,7 +53,6 @@ import type {
   ValidatedWorkSummaryV1,
 } from '../shared/validated-work.ts'
 import { isObject } from '../shared/is-object.ts'
-import { Composer } from './features/composer/Composer.tsx'
 import { ExtensionStatusBar } from './features/extension-ui/ExtensionStatusBar.tsx'
 import { ExtensionWidgetHost } from './features/extension-ui/ExtensionWidgetHost.tsx'
 import { ToastStack, type Toast } from './features/notifications/ToastStack.tsx'
@@ -60,11 +68,8 @@ import { documentTitleFor, faviconDataUrl } from './features/notifications/tab-t
 import { budgetExceeded, readBudgetUsd } from './features/settings/budget.ts'
 import { extensionDocumentTitle } from './features/extension-ui/document-title.ts'
 import { sessionActivity, type PiConnection } from './features/conversation/activity.ts'
-import { Conversation } from './features/conversation/Conversation.tsx'
 import { useConversationRuntime } from './features/conversation/useConversationRuntime.ts'
-import { AskUserQuestionDialog, ExtensionDialog } from './features/dialogs/Dialogs.tsx'
 import { ConfirmDialog } from './features/dialogs/ConfirmDialog.tsx'
-import { ExportDialog } from './features/dialogs/ExportDialog.tsx'
 import {
   isAgentSelector,
   isAskUserQuestionDialog,
@@ -78,18 +83,16 @@ import {
   readRightSidebarWidth,
   type RightWidget,
 } from './features/right-sidebar/right-sidebar.ts'
-import { RightSidebar } from './features/right-sidebar/RightSidebar.tsx'
 import { quotaProviderForModel } from './features/quotas/quota-display.ts'
 import { DirectoryPicker } from './features/workspace/DirectoryPicker.tsx'
 import { sidebarSessions } from './features/workspace/sidebar-sessions.ts'
 import { useWorkspaceSessions } from './features/workspace/useWorkspaceSessions.ts'
-import { WorkspaceSidebar } from './features/workspace/WorkspaceSidebar.tsx'
 import {
   clampWorkspaceSidebarWidth,
   readWorkspaceSidebarCollapsed,
   readWorkspaceSidebarWidth,
 } from './features/workspace/workspace-sidebar.ts'
-import { CommandPalette, type PaletteCommand } from './features/commands/CommandPalette.tsx'
+import type { PaletteCommand } from './features/commands/CommandPalette.tsx'
 import {
   commandDefinitions,
   defaultShortcuts,
@@ -99,9 +102,7 @@ import {
   shortcutFromEvent,
   type CommandId,
 } from './features/commands/command-registry.ts'
-import { SettingsPanel } from './features/settings/SettingsPanel.tsx'
 import { ManagerRuntimeNotice } from './features/manager/ManagerRuntimeNotice.tsx'
-import { PlanApprovalDialog } from './features/quality/PlanApprovalDialog.tsx'
 import {
   modeFromSummary,
   parseQualitySummaryStatus,
@@ -134,6 +135,36 @@ import {
 import './features/commands/commands.css'
 
 const emptyAgentOptions: string[] = []
+const AskUserQuestionDialog = lazy(async () => ({
+  default: (await import('./features/dialogs/Dialogs.tsx')).AskUserQuestionDialog,
+}))
+const ExtensionDialog = lazy(async () => ({
+  default: (await import('./features/dialogs/Dialogs.tsx')).ExtensionDialog,
+}))
+const ExportDialog = lazy(async () => ({
+  default: (await import('./features/dialogs/ExportDialog.tsx')).ExportDialog,
+}))
+const WorkspaceSidebar = lazy(async () => ({
+  default: (await import('./features/workspace/WorkspaceSidebar.tsx')).WorkspaceSidebar,
+}))
+const RightSidebar = lazy(async () => ({
+  default: (await import('./features/right-sidebar/RightSidebar.tsx')).RightSidebar,
+}))
+const CommandPalette = lazy(async () => ({
+  default: (await import('./features/commands/CommandPalette.tsx')).CommandPalette,
+}))
+const SettingsPanel = lazy(async () => ({
+  default: (await import('./features/settings/SettingsPanel.tsx')).SettingsPanel,
+}))
+const PlanApprovalDialog = lazy(async () => ({
+  default: (await import('./features/quality/PlanApprovalDialog.tsx')).PlanApprovalDialog,
+}))
+const Composer = lazy(async () => ({
+  default: (await import('./features/composer/Composer.tsx')).Composer,
+}))
+const Conversation = lazy(async () => ({
+  default: (await import('./features/conversation/Conversation.tsx')).Conversation,
+}))
 const conversationViewDetails = {
   simple: { label: 'Simplified view', description: 'Messages only, without tool calls' },
   'semi-detailed': {
@@ -1570,35 +1601,37 @@ function App() {
         '--workspace-sidebar-width': `${workspaceSidebarWidth}px`,
       } as CSSProperties}
     >
-      <WorkspaceSidebar
-        collapsed={workspaceSidebarCollapsed}
-        compactingSessionIds={compactingSessionIds}
-        completedSessionIds={completedSessionIds}
-        isRefreshing={isRefreshingSessions}
-        recentSessions={recentSessions}
-        sentSessions={sentSessions}
-        sessions={sessions}
-        selectedId={selectedId}
-        width={workspaceSidebarWidth}
-        workspacePath={workspacePath}
-        onChooseWorkspace={() => setDirectoryPickerOpen(true)}
-        onCloseSession={closeManagedSession}
-        onCreate={async () => {
-          await startAndSelectSession(() => createSession(workspacePath))
-        }}
-        onOpenSession={async (recentSession) => {
-          await startAndSelectSession(() => openSession(workspacePath, recentSession.sessionPath))
-        }}
-        onSelectOtherWorkspaceSession={(session) => selectWorkspace(session.cwd, session.id)}
-        onSelectSession={setSelectedId}
-        onError={(cause) => showToast('error', messageOf(cause))}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onRenameSession={renameManagedSession}
-        onResize={updateWorkspaceSidebarWidth}
-        onToggleCollapsed={toggleWorkspaceSidebar}
-        sessionMeta={sessionMeta}
-        onUpdateSessionMeta={updateSessionMeta}
-      />
+      <Suspense fallback={null}>
+        <WorkspaceSidebar
+          collapsed={workspaceSidebarCollapsed}
+          compactingSessionIds={compactingSessionIds}
+          completedSessionIds={completedSessionIds}
+          isRefreshing={isRefreshingSessions}
+          recentSessions={recentSessions}
+          sentSessions={sentSessions}
+          sessions={sessions}
+          selectedId={selectedId}
+          width={workspaceSidebarWidth}
+          workspacePath={workspacePath}
+          onChooseWorkspace={() => setDirectoryPickerOpen(true)}
+          onCloseSession={closeManagedSession}
+          onCreate={async () => {
+            await startAndSelectSession(() => createSession(workspacePath))
+          }}
+          onOpenSession={async (recentSession) => {
+            await startAndSelectSession(() => openSession(workspacePath, recentSession.sessionPath))
+          }}
+          onSelectOtherWorkspaceSession={(session) => selectWorkspace(session.cwd, session.id)}
+          onSelectSession={setSelectedId}
+          onError={(cause) => showToast('error', messageOf(cause))}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onRenameSession={renameManagedSession}
+          onResize={updateWorkspaceSidebarWidth}
+          onToggleCollapsed={toggleWorkspaceSidebar}
+          sessionMeta={sessionMeta}
+          onUpdateSessionMeta={updateSessionMeta}
+        />
+      </Suspense>
 
       <main className='workspace'>
         <ManagerRuntimeNotice
@@ -1614,24 +1647,26 @@ function App() {
             <>
               {(snapshotSessionId === selectedSession.id || loadingPhase === 'exiting') && (
                 <>
-                  <Conversation
-                    activity={displayedActivity}
-                    agentName={selectedSession.activeAgent}
-                    conversationView={conversationView}
-                    forkAvailable={snapshot.capabilities?.commands['fork'] === true}
-                    key={selectedSession.id}
-                    liveMessages={liveMessages}
-                    messages={snapshot.messages}
-                    navigationRequest={conversationNavigation}
-                    onError={handleConversationError}
-                    onForkMessage={handleForkMessage}
-                    pendingSteering={pendingSteering}
-                    repositoryRoot={gitSnapshot?.root}
-                    scrollToBottomRequest={scrollToBottomRequest}
-                    searchRequest={conversationSearchRequest}
-                    workingDirectory={selectedSession.cwd}
-                    toolExecutions={toolExecutions}
-                  />
+                  <Suspense fallback={null}>
+                    <Conversation
+                      activity={displayedActivity}
+                      agentName={selectedSession.activeAgent}
+                      conversationView={conversationView}
+                      forkAvailable={snapshot.capabilities?.commands['fork'] === true}
+                      key={selectedSession.id}
+                      liveMessages={liveMessages}
+                      messages={snapshot.messages}
+                      navigationRequest={conversationNavigation}
+                      onError={handleConversationError}
+                      onForkMessage={handleForkMessage}
+                      pendingSteering={pendingSteering}
+                      repositoryRoot={gitSnapshot?.root}
+                      scrollToBottomRequest={scrollToBottomRequest}
+                      searchRequest={conversationSearchRequest}
+                      workingDirectory={selectedSession.cwd}
+                      toolExecutions={toolExecutions}
+                    />
+                  </Suspense>
                   <div className={`chat-detail-control ${conversationView}`}>
                     <button
                       aria-label={`${conversationViewDetail.label}. ${conversationViewDetail.description}. Hover or focus to choose another view.`}
@@ -1682,18 +1717,20 @@ function App() {
                   </div>
                   <div className='composer-area'>
                     {questionnaire && questionnaireInComposer && (
-                      <AskUserQuestionDialog
-                        canMinimize
-                        dialog={questionnaire}
-                        key={String(
-                          questionnaire
-                            .request
-                            .id,
-                        )}
-                        sessionName={selectedSession.name}
-                        onClose={() => closeDialog(questionnaire)}
-                        onError={(cause) => showToast('error', messageOf(cause))}
-                      />
+                      <Suspense fallback={null}>
+                        <AskUserQuestionDialog
+                          canMinimize
+                          dialog={questionnaire}
+                          key={String(
+                            questionnaire
+                              .request
+                              .id,
+                          )}
+                          sessionName={selectedSession.name}
+                          onClose={() => closeDialog(questionnaire)}
+                          onError={(cause) => showToast('error', messageOf(cause))}
+                        />
+                      </Suspense>
                     )}
                     <ToastStack onDismiss={dismissToast} toasts={visibleToasts} />
                     {selectedExtensionUi?.status.size
@@ -1707,44 +1744,46 @@ function App() {
                         />
                       )
                       : null}
-                    <Composer
-                      key={selectedSession.id}
-                      session={selectedSession}
-                      snapshot={snapshot}
-                      agentBusy={Boolean(agentBusy[selectedSession.id])}
-                      agentOptions={agentOptions[selectedSession.id] ?? emptyAgentOptions}
-                      agentOptionsLoading={Boolean(agentOptionsLoading[selectedSession.id])}
-                      selectedAgent={selectedSession.activeAgent ?? ''}
-                      onAgentChange={handleComposerAgentChange}
-                      onRequestAgentOptions={() => fetchAgentOptions(selectedSession.id)}
-                      onCommand={handleComposerCommand}
-                      commands={snapshot.commands}
-                      agentLoading={snapshotSessionId !== selectedSession.id}
-                      focusRequest={focusComposerRequest}
-                      draftRequest={composerDraftRequest?.sessionId === selectedSession.id
-                        ? composerDraftRequest
-                        : undefined}
-                      onDraftApplied={markComposerDraftApplied}
-                      editorText={selectedExtensionUi?.editorText}
-                      onEditorTextRejected={(text) =>
-                        handleEditorTextRejected(selectedSession.id, text)}
-                      showAgentSelector={snapshotSessionId !== selectedSession.id
-                        || snapshot.commands.some((command) => command.name === 'agent')}
-                      running={selectedSession.status === 'running'}
-                      compacting={displayedActivity?.kind === 'compacting'}
-                      retrying={displayedActivity?.kind === 'retrying'}
-                      onSend={handleComposerSend}
-                      onAbort={handleComposerAbort}
-                      onAbortRetry={handleComposerAbortRetry}
-                      onImprovePrompt={handlePromptImprovement}
-                      onSavePrompt={handleSavePrompt}
-                      onError={handleConversationError}
-                      qualityMode={selectedQualityMode}
-                      onQualityModeChange={handleQualityModeChange}
-                      requestedSelect={requestedSelect}
-                      onSelectOpened={handleComposerSelectOpened}
-                      submitRequest={submitRequest}
-                    />
+                    <Suspense fallback={null}>
+                      <Composer
+                        key={selectedSession.id}
+                        session={selectedSession}
+                        snapshot={snapshot}
+                        agentBusy={Boolean(agentBusy[selectedSession.id])}
+                        agentOptions={agentOptions[selectedSession.id] ?? emptyAgentOptions}
+                        agentOptionsLoading={Boolean(agentOptionsLoading[selectedSession.id])}
+                        selectedAgent={selectedSession.activeAgent ?? ''}
+                        onAgentChange={handleComposerAgentChange}
+                        onRequestAgentOptions={() => fetchAgentOptions(selectedSession.id)}
+                        onCommand={handleComposerCommand}
+                        commands={snapshot.commands}
+                        agentLoading={snapshotSessionId !== selectedSession.id}
+                        focusRequest={focusComposerRequest}
+                        draftRequest={composerDraftRequest?.sessionId === selectedSession.id
+                          ? composerDraftRequest
+                          : undefined}
+                        onDraftApplied={markComposerDraftApplied}
+                        editorText={selectedExtensionUi?.editorText}
+                        onEditorTextRejected={(text) =>
+                          handleEditorTextRejected(selectedSession.id, text)}
+                        showAgentSelector={snapshotSessionId !== selectedSession.id
+                          || snapshot.commands.some((command) => command.name === 'agent')}
+                        running={selectedSession.status === 'running'}
+                        compacting={displayedActivity?.kind === 'compacting'}
+                        retrying={displayedActivity?.kind === 'retrying'}
+                        onSend={handleComposerSend}
+                        onAbort={handleComposerAbort}
+                        onAbortRetry={handleComposerAbortRetry}
+                        onImprovePrompt={handlePromptImprovement}
+                        onSavePrompt={handleSavePrompt}
+                        onError={handleConversationError}
+                        qualityMode={selectedQualityMode}
+                        onQualityModeChange={handleQualityModeChange}
+                        requestedSelect={requestedSelect}
+                        onSelectOpened={handleComposerSelectOpened}
+                        submitRequest={submitRequest}
+                      />
+                    </Suspense>
                     {selectedExtensionUi?.widgets.size
                       ? (
                         <ExtensionWidgetHost
@@ -1799,62 +1838,64 @@ function App() {
           )}
       </main>
 
-      <RightSidebar
-        activeSessionId={selectedId}
-        activeWidget={activeRightWidget}
-        analysis={sessionAnalysis}
-        analysisAvailable={analysisAvailable}
-        compactingSessionIds={compactingSessionIds}
-        completedSessionIds={completedSessionIds}
-        currentQuotaProvider={currentQuotaProvider}
-        qualityMode={selectedQualityMode}
-        qualityReviewRevision={selectedQualityReviewRevision}
-        qualitySummary={selectedQualitySummary}
-        onAnalysisNavigate={navigateToAnalysisTarget}
-        onResize={updateRightSidebarWidth}
-        snapshot={gitSnapshot?.repository ? gitSnapshot : null}
-        sessions={sessions}
-        quotas={quotas}
-        width={rightSidebarWidth}
-        workspacePath={workspacePath}
-        railActions={railActions}
-        onCommit={async (message) => {
-          await commitChanges(workspacePath, message)
-        }}
-        onConfirm={(message) => requestConfirm('Confirm action', message)}
-        onDiscard={async (path) => {
-          await discardChanges(workspacePath, path)
-        }}
-        onPush={() => pushCommits(workspacePath)}
-        onQualityModeChange={handleQualityModeChange}
-        onFileSelect={(path, commitHash) => getGitFileDiff(workspacePath, path, commitHash)}
-        onQuotaRefresh={() => refreshSessionQuotas(selectedId, false)}
-        onRefresh={() => refreshGit(workspacePath, true)}
-        onReset={async (hash) => {
-          return await resetGitCommit(workspacePath, hash)
-        }}
-        onRevert={async (hash) => {
-          return await revertGitCommit(workspacePath, hash)
-        }}
-        onTodoNavigateSession={(link) => {
-          const active = sessions.find((s) => s.id === link.id)
-          if (active) {
-            setSelectedId(link.id)
-          } else {
-            void startAndSelectSession(() => openSession(workspacePath, link.sessionPath))
-          }
-        }}
-        onTodoSendPrompt={async (message) =>
-          startAndSelectSession(() => createSession(workspacePath), message)}
-        onTodoStartSession={async (message) =>
-          startAndSelectSession(() => createSession(workspacePath), undefined, message)}
-        onWidgetSelect={(widget) =>
-          setActiveRightWidget((current) => {
-            const next = current === widget ? null : widget
-            window.localStorage.setItem('pi-livecraft.right-sidebar-widget', next ?? 'none')
-            return next
-          })}
-      />
+      <Suspense fallback={null}>
+        <RightSidebar
+          activeSessionId={selectedId}
+          activeWidget={activeRightWidget}
+          analysis={sessionAnalysis}
+          analysisAvailable={analysisAvailable}
+          compactingSessionIds={compactingSessionIds}
+          completedSessionIds={completedSessionIds}
+          currentQuotaProvider={currentQuotaProvider}
+          qualityMode={selectedQualityMode}
+          qualityReviewRevision={selectedQualityReviewRevision}
+          qualitySummary={selectedQualitySummary}
+          onAnalysisNavigate={navigateToAnalysisTarget}
+          onResize={updateRightSidebarWidth}
+          snapshot={gitSnapshot?.repository ? gitSnapshot : null}
+          sessions={sessions}
+          quotas={quotas}
+          width={rightSidebarWidth}
+          workspacePath={workspacePath}
+          railActions={railActions}
+          onCommit={async (message) => {
+            await commitChanges(workspacePath, message)
+          }}
+          onConfirm={(message) => requestConfirm('Confirm action', message)}
+          onDiscard={async (path) => {
+            await discardChanges(workspacePath, path)
+          }}
+          onPush={() => pushCommits(workspacePath)}
+          onQualityModeChange={handleQualityModeChange}
+          onFileSelect={(path, commitHash) => getGitFileDiff(workspacePath, path, commitHash)}
+          onQuotaRefresh={() => refreshSessionQuotas(selectedId, false)}
+          onRefresh={() => refreshGit(workspacePath, true)}
+          onReset={async (hash) => {
+            return await resetGitCommit(workspacePath, hash)
+          }}
+          onRevert={async (hash) => {
+            return await revertGitCommit(workspacePath, hash)
+          }}
+          onTodoNavigateSession={(link) => {
+            const active = sessions.find((s) => s.id === link.id)
+            if (active) {
+              setSelectedId(link.id)
+            } else {
+              void startAndSelectSession(() => openSession(workspacePath, link.sessionPath))
+            }
+          }}
+          onTodoSendPrompt={async (message) =>
+            startAndSelectSession(() => createSession(workspacePath), message)}
+          onTodoStartSession={async (message) =>
+            startAndSelectSession(() => createSession(workspacePath), undefined, message)}
+          onWidgetSelect={(widget) =>
+            setActiveRightWidget((current) => {
+              const next = current === widget ? null : widget
+              window.localStorage.setItem('pi-livecraft.right-sidebar-widget', next ?? 'none')
+              return next
+            })}
+        />
+      </Suspense>
 
       {directoryPickerOpen && (
         <DirectoryPicker
@@ -1866,26 +1907,30 @@ function App() {
         />
       )}
       {questionnaire && !questionnaireInComposer && (
-        <AskUserQuestionDialog
-          canMinimize={false}
-          key={String(
-            questionnaire
-              .request
-              .id,
-          )}
-          dialog={questionnaire}
-          sessionName={questionnaireSession?.name}
-          onClose={() => closeDialog(questionnaire)}
-          onError={(cause) => showToast('error', messageOf(cause))}
-          onOpenSession={openQuestionnaireSession}
-        />
+        <Suspense fallback={null}>
+          <AskUserQuestionDialog
+            canMinimize={false}
+            key={String(
+              questionnaire
+                .request
+                .id,
+            )}
+            dialog={questionnaire}
+            sessionName={questionnaireSession?.name}
+            onClose={() => closeDialog(questionnaire)}
+            onError={(cause) => showToast('error', messageOf(cause))}
+            onOpenSession={openQuestionnaireSession}
+          />
+        </Suspense>
       )}
       {dialog && !questionnaire && (
-        <ExtensionDialog
-          dialog={dialog}
-          onClose={() => closeDialog(dialog)}
-          onError={(cause) => showToast('error', messageOf(cause))}
-        />
+        <Suspense fallback={null}>
+          <ExtensionDialog
+            dialog={dialog}
+            onClose={() => closeDialog(dialog)}
+            onError={(cause) => showToast('error', messageOf(cause))}
+          />
+        </Suspense>
       )}
       {confirmHost && (
         <ConfirmDialog
@@ -1912,76 +1957,87 @@ function App() {
         />
       )}
       {planDialogKey && planDialogDismissedKey !== planDialogKey && (
-        <PlanApprovalDialog
-          loading={planDialogLoading}
-          state={(planDialogDetails?.state ?? null) as ValidatedWorkStateV1 | null}
-          onApprove={handleApprovePlan}
-          onCancelMode={handleCancelQualityMode}
-          onKeepPlanning={closePlanDialog}
-          onRequestChanges={handleRequestPlanChanges}
-        />
+        <Suspense fallback={null}>
+          <PlanApprovalDialog
+            loading={planDialogLoading}
+            state={(planDialogDetails?.state ?? null) as ValidatedWorkStateV1 | null}
+            onApprove={handleApprovePlan}
+            onCancelMode={handleCancelQualityMode}
+            onKeepPlanning={closePlanDialog}
+            onRequestChanges={handleRequestPlanChanges}
+          />
+        </Suspense>
       )}
       {exportDialogOpen && (
-        <ExportDialog
-          htmlAvailable={snapshot.capabilities?.commands['export_html'] === true}
-          onCancel={() => setExportDialogOpen(false)}
-          onPick={(format) => {
-            setExportDialogOpen(false)
-            void exportSession(selectedId, format)
-              .then(() => showToast('notice', 'Export downloaded.'))
-              .catch((cause) => showToast('error', messageOf(cause)))
-          }}
-        />
+        <Suspense fallback={null}>
+          <ExportDialog
+            htmlAvailable={snapshot.capabilities?.commands['export_html'] === true}
+            onCancel={() => setExportDialogOpen(false)}
+            onPick={(format) => {
+              setExportDialogOpen(false)
+              void exportSession(selectedId, format)
+                .then(() => showToast('notice', 'Export downloaded.'))
+                .catch((cause) => showToast('error', messageOf(cause)))
+            }}
+          />
+        </Suspense>
       )}
       {commandPaletteOpen && (
-        <CommandPalette
-          commands={paletteCommands}
-          onClose={() => setCommandPaletteOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <CommandPalette
+            commands={paletteCommands}
+            onClose={() => setCommandPaletteOpen(false)}
+          />
+        </Suspense>
       )}
       {settingsOpen && (
-        <SettingsPanel
-          definitions={commandDefinitions}
-          shortcuts={shortcuts}
-          terminalCommand={terminalCommand}
-          themes={allThemes(themePreferences)}
-          activeThemeId={activeTheme.id}
-          onChange={(id, shortcut) => {
-            const next = { ...shortcuts, [id]: shortcut }
-            setShortcuts(next)
-            window.localStorage.setItem('pi-livecraft.shortcuts', JSON.stringify(next))
-          }}
-          onTerminalCommandChange={(value) => {
-            setTerminalCommand(value)
-            window.localStorage.setItem('pi-livecraft.terminal-command', value)
-          }}
-          onSelectTheme={selectTheme}
-          onDuplicateTheme={duplicateActiveTheme}
-          onRenameTheme={renameSelectedTheme}
-          onUpdateThemeColor={updateSelectedThemeColor}
-          onDeleteTheme={deleteSelectedTheme}
-          onResetTheme={resetSelectedTheme}
-          onReset={() => {
-            setShortcuts(defaultShortcuts)
-            window.localStorage.setItem('pi-livecraft.shortcuts', JSON.stringify(defaultShortcuts))
-          }}
-          onClose={() => setSettingsOpen(false)}
-          sessionSelected={Boolean(selectedSession)}
-          autoCompactionEnabled={autoCompactionEnabled}
-          autoRetryEnabled={autoRetryBySession[selectedId] ?? false}
-          capabilities={snapshot.capabilities}
-          qualitySettings={qualitySettings}
-          onSetAutoCompaction={handleSetAutoCompaction}
-          onSetAutoRetry={handleSetAutoRetry}
-          onQualitySettingsChange={(next) => {
-            setQualitySettings(next)
-            writeQualitySettings(window.localStorage, next)
-          }}
-          onResetQualityAcknowledgement={() => {
-            resetQualityAcknowledgement(window.localStorage)
-            showToast('notice', 'Quality first-use acknowledgement reset.')
-          }}
-        />
+        <Suspense fallback={null}>
+          <SettingsPanel
+            definitions={commandDefinitions}
+            shortcuts={shortcuts}
+            terminalCommand={terminalCommand}
+            themes={allThemes(themePreferences)}
+            activeThemeId={activeTheme.id}
+            onChange={(id, shortcut) => {
+              const next = { ...shortcuts, [id]: shortcut }
+              setShortcuts(next)
+              window.localStorage.setItem('pi-livecraft.shortcuts', JSON.stringify(next))
+            }}
+            onTerminalCommandChange={(value) => {
+              setTerminalCommand(value)
+              window.localStorage.setItem('pi-livecraft.terminal-command', value)
+            }}
+            onSelectTheme={selectTheme}
+            onDuplicateTheme={duplicateActiveTheme}
+            onRenameTheme={renameSelectedTheme}
+            onUpdateThemeColor={updateSelectedThemeColor}
+            onDeleteTheme={deleteSelectedTheme}
+            onResetTheme={resetSelectedTheme}
+            onReset={() => {
+              setShortcuts(defaultShortcuts)
+              window.localStorage.setItem(
+                'pi-livecraft.shortcuts',
+                JSON.stringify(defaultShortcuts),
+              )
+            }}
+            onClose={() => setSettingsOpen(false)}
+            sessionSelected={Boolean(selectedSession)}
+            autoCompactionEnabled={autoCompactionEnabled}
+            autoRetryEnabled={autoRetryBySession[selectedId] ?? false}
+            capabilities={snapshot.capabilities}
+            qualitySettings={qualitySettings}
+            onSetAutoCompaction={handleSetAutoCompaction}
+            onSetAutoRetry={handleSetAutoRetry}
+            onQualitySettingsChange={(next) => {
+              setQualitySettings(next)
+              writeQualitySettings(window.localStorage, next)
+            }}
+            onResetQualityAcknowledgement={() => {
+              resetQualityAcknowledgement(window.localStorage)
+              showToast('notice', 'Quality first-use acknowledgement reset.')
+            }}
+          />
+        </Suspense>
       )}
     </div>
   )
