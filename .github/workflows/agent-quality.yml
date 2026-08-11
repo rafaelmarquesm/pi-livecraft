@@ -180,10 +180,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ -d "$RESULTS_ROOT/$CAMPAIGN_ID" ]; then
-            find "$RESULTS_ROOT/$CAMPAIGN_ID" -type f -maxdepth 3 -print0 | xargs -0 -r sed -i \
-              -e 's/sk-[A-Za-z0-9_-]\{16,\}/[REDACTED_API_KEY]/g' \
-              -e 's/Authorization: Bearer [A-Za-z0-9._-]\+/Authorization: Bearer [REDACTED]/g' \
-              -e 's/"access_token":"[^"]\+"/"access_token":"[REDACTED]"/g'
+            while IFS= read -r -d '' file; do
+              perl -0pi -e 's/sk-[A-Za-z0-9_-]{16,}/[REDACTED_API_KEY]/g; s/Authorization: Bearer [A-Za-z0-9._-]+/Authorization: Bearer [REDACTED]/g; s/"access_token":"[^"]+"/"access_token":"[REDACTED]"/g' "$file"
+            done < <(find "$RESULTS_ROOT/$CAMPAIGN_ID" -maxdepth 3 -type f -print0)
           fi
 
       - name: Write job summary
