@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import process from 'node:process'
 import {
   assertValidatedWorkPerformanceBudgets,
   measureRealPiResources,
@@ -9,6 +10,13 @@ import {
 } from './validated-work-performance.ts'
 
 async function main(): Promise<void> {
+  const authoritativeEnvironment = process.platform === 'linux'
+    && process.versions.node.startsWith('24.')
+  if (!authoritativeEnvironment) {
+    console.warn(
+      `Warning: validated-work timing budgets are authoritative after stabilization in CI Node 24/Linux. Running on ${process.platform} Node ${process.versions.node}.`,
+    )
+  }
   const core = measureValidatedWorkCorePerformance()
   assertValidatedWorkPerformanceBudgets(core)
   const review = await measureReviewPacketPerformance()

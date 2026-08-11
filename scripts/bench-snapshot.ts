@@ -95,6 +95,7 @@ async function main(): Promise<void> {
   const id = crypto.randomUUID()
   // cwd must be a real directory; default to the E2E workspace.
   const cwd = process.env.PI_LIVECRAFT_BENCH_CWD ?? '/tmp/pi-livecraft-e2e-workspace'
+  await mkdir(cwd, { recursive: true })
   const body = syntheticSession(MESSAGE_COUNT, id, cwd)
   await writeFile(file, body)
 

@@ -12,6 +12,8 @@
  * Requires the backend (npm run dev) running on PI_LIVECRAFT_BACKEND_PORT (43121).
  */
 
+import { mkdir } from 'node:fs/promises'
+
 const base = `http://127.0.0.1:${process.env.PI_LIVECRAFT_BACKEND_PORT ?? '43121'}`
 const CYCLES = Number(process.argv[2] ?? 10)
 const cwd = process.env.PI_LIVECRAFT_BENCH_CWD ?? '/tmp/pi-livecraft-e2e-workspace'
@@ -55,6 +57,7 @@ async function snapshot(id: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  await mkdir(cwd, { recursive: true })
   const baseline = await processRssKb()
   console.log(`Baseline RSS (backend+manager): ${(baseline / 1024).toFixed(1)} MiB`)
 

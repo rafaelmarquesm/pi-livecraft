@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -20,11 +20,30 @@ export default function globalSetup(): void {
     recursive: true,
   })
   mkdirSync(workspace, { recursive: true })
-  execFileSync('git', ['init', '-q'], { cwd: workspace })
+  initializeGitWorkspace(workspace)
   execFileSync('git', ['config', 'user.email', 'e2e@pi-livecraft.local'], { cwd: workspace })
   execFileSync('git', ['config', 'user.name', 'Pi Livecraft E2E'], { cwd: workspace })
   const readme = join(workspace, 'README.md')
   writeFileSync(readme, '# Pi Livecraft E2E workspace\n')
   execFileSync('git', ['add', 'README.md'], { cwd: workspace })
   execFileSync('git', ['commit', '-q', '-m', 'test: initialize E2E workspace'], { cwd: workspace })
+}
+
+function initializeGitWorkspace(cwd: string): void {
+  try {
+    execFileSync('git', ['init', '-q'], { cwd })
+    return
+  } catch (error) {
+    if (
+      cwd !== defaultWorkspace
+      || !(error instanceof Error)
+      || !error.message.includes('File exists')
+      || !existsSync(join(cwd, '.git'))
+    ) {
+      throw error
+    }
+  }
+
+  rmSync(join(cwd, '.git'), { force: true, recursive: true })
+  execFileSync('git', ['init', '-q'], { cwd })
 }
