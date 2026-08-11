@@ -40,7 +40,7 @@ export interface SettingsTabDefinition {
 }
 
 /** Ordered list of tabs rendered in the settings modal. */
-export const settingsTabs: SettingsTabDefinition[] = [
+const settingsTabs: SettingsTabDefinition[] = [
   { id: 'themes', label: 'Color themes' },
   { id: 'terminal', label: 'Terminal' },
   { id: 'shortcuts', label: 'Shortcuts' },

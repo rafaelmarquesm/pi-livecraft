@@ -367,7 +367,7 @@ export function Conversation(
       window.clearTimeout(highlightTimeout)
       navigationInProgressRef.current = false
     }
-  }, [activeSearchMatch, renderedHistoryStart])
+  }, [activeSearchMatch, allMessages, renderedHistoryStart])
 
   /** Tracks scrolling without mistaking layout-driven Markdown reflows for user input. */
   function handleConversationScroll(): void {

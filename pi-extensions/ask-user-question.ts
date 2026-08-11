@@ -4,7 +4,6 @@ import type {
   AskUserQuestion,
   AskUserQuestionAnswer,
   AskUserQuestionRequest,
-  AskUserQuestionResponse,
 } from '../shared/ask-user-question.ts'
 import {
   askUserQuestionProtocol,

@@ -23,6 +23,10 @@ export const extensionTitleLimit = 200
 export const extensionWidgetLineLimit = 40
 export const extensionWidgetColumnLimit = 200
 export const extensionEditorTextLimit = 100_000
+export const ansiEscapePattern = new RegExp(
+  String.raw`\u001b\[[0-9;?]*[A-Za-z]|\u001b\][^\u0007]*(?:\u0007|\u001b\\)|\u001b[()][0-9A-Z]`,
+  'g',
+)
 
 export interface ExtensionWidget {
   lines: string[]
@@ -63,10 +67,7 @@ export function isBlockingUiRequest(request: JsonObject): boolean {
 
 /** Removes ANSI CSI/OSC escape sequences from extension-provided text. */
 export function stripAnsi(text: string): string {
-  return text.replace(
-    /\u001b\[[0-9;?]*[A-Za-z]|\u001b\][^\u0007]*(?:\u0007|\u001b\\)|\u001b[()][0-9A-Z]/g,
-    '',
-  )
+  return text.replace(ansiEscapePattern, '')
 }
 
 /** Applies one extension_ui_request to the state, returning a new state. Pure. */

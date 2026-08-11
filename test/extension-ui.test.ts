@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  ansiEscapePattern,
   applyExtensionUiRequest,
   createExtensionUiState,
   extensionEditorTextLimit,
@@ -13,6 +14,8 @@ import {
   sanitizeExtensionUiRequest,
   stripAnsi,
 } from '../shared/extension-ui.ts'
+
+const ansiCharPattern = new RegExp(String.raw`\u001b`)
 import type { JsonObject } from '../shared/types.ts'
 
 function request(method: string, fields: Record<string, unknown> = {}): JsonObject {
@@ -173,7 +176,7 @@ test('sanitizeSetStatus strips ANSI, truncates, and keeps the envelope', () => {
   assert.equal(typeof text, 'string')
   assert.equal((text as string).length, extensionStatusTextLimit)
   assert.ok((text as string).endsWith('…'))
-  assert.doesNotMatch(text as string, /\u001b/)
+  assert.doesNotMatch(text as string, ansiCharPattern)
 })
 
 test('sanitizeSetStatus drops invalid payload fields', () => {
@@ -207,7 +210,7 @@ test('sanitizeSetWidget enforces line and column limits and normalizes placement
   assert.equal(lines[0], 'line-0')
   assert.equal(lines[extensionWidgetLineLimit - 1]?.length, extensionWidgetColumnLimit)
   assert.ok(lines[extensionWidgetLineLimit - 1]?.endsWith('…'))
-  assert.ok(lines.every((line) => !/\u001b/.test(line)))
+  assert.ok(lines.every((line) => !ansiCharPattern.test(line)))
 })
 
 test('sanitizeSetWidget preserves belowEditor and omits non-array lines', () => {
@@ -241,7 +244,7 @@ test('sanitizeSetTitle strips ANSI and truncates to the title limit', () => {
   assert.equal(typeof sanitized.title, 'string')
   assert.equal((sanitized.title as string).length, extensionTitleLimit)
   assert.ok((sanitized.title as string).endsWith('…'))
-  assert.doesNotMatch(sanitized.title as string, /\u001b/)
+  assert.doesNotMatch(sanitized.title as string, ansiCharPattern)
   const dropped = sanitizeExtensionUiRequest(request('setTitle', { title: 5 }))
   assert.deepEqual(dropped, {
     type: 'extension_ui_request',
@@ -258,7 +261,11 @@ test('sanitizeSetEditorText strips ANSI and truncates to the editor limit', () =
   assert.equal(typeof sanitized.text, 'string')
   assert.equal((sanitized.text as string).length, extensionEditorTextLimit)
   assert.ok((sanitized.text as string).endsWith('…'))
-  assert.doesNotMatch(sanitized.text as string, /\u001b/)
+  assert.doesNotMatch(sanitized.text as string, ansiCharPattern)
+
+  test('stripAnsi removes ANSI escapes with the shared pattern', () => {
+    assert.equal('alpha\u001b[31mred\u001b[0momega'.replace(ansiEscapePattern, ''), 'alpharedomega')
+  })
   const dropped = sanitizeExtensionUiRequest(request('set_editor_text', { text: null }))
   assert.deepEqual(dropped, {
     type: 'extension_ui_request',

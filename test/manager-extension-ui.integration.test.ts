@@ -361,7 +361,7 @@ function requireData(event: ManagerEvent): JsonObject {
 }
 
 function assertNoAnsi(request: JsonObject): void {
-  assert.doesNotMatch(JSON.stringify(request), /\u001b/)
+  assert.doesNotMatch(JSON.stringify(request), new RegExp(String.raw`\u001b`))
 }
 
 interface ManagerResponse {

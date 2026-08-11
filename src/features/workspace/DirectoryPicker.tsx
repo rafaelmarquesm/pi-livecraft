@@ -46,7 +46,7 @@ export function DirectoryPicker({ initialPath, recentPaths, onClose, onError, on
       .catch(() => {
         if (version === completionVersionRef.current) setSuggestions([])
       })
-  }, [path])
+  }, [initialPath, path])
 
   const visibleRecentPaths = recentPaths.filter((recentPath) => recentPath !== initialPath)
 
