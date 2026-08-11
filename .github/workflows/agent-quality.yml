@@ -7,6 +7,10 @@ on:
         description: Provider to evaluate. Use fake for provider-free dry runs.
         required: true
         default: fake
+      driver:
+        description: Execution driver. fake is provider-free, pi-direct runs a disposable Pi process, livecraft drives the local HTTP API.
+        required: true
+        default: fake
       model:
         description: Model id requested by the campaign.
         required: true
@@ -90,6 +94,7 @@ jobs:
           esac
           case "${{ inputs.k }}" in (*[!0-9]*|'') echo "k must be numeric" >&2; exit 2;; esac
           case "${{ inputs.budget_usd }}" in (*[!0-9.]*|'') echo "budget must be numeric" >&2; exit 2;; esac
+          case "${{ inputs.driver }}" in fake|pi-direct|livecraft) ;; *) echo "driver must be fake, pi-direct, or livecraft" >&2; exit 2;; esac
           mkdir -p "$RESULTS_ROOT/$CAMPAIGN_ID"
 
       - name: Run provider-free fake quality campaign
@@ -100,12 +105,55 @@ jobs:
           node evals/quality/cli.ts compare --k "${{ inputs.k }}" --format markdown "$RESULTS_ROOT/$CAMPAIGN_ID/artifact.json" \
             > "$RESULTS_ROOT/$CAMPAIGN_ID/summary.md"
 
-      - name: Refuse unimplemented paid provider path safely
+      - name: Run paid quality campaign when explicitly enabled
         if: ${{ !inputs.dry_run && inputs.provider != 'fake' }}
+        env:
+          QUALITY_ALLOW_PAID_PROVIDER: ${{ vars.QUALITY_ALLOW_PAID_PROVIDER }}
+          PI_QUALITY_EXECUTABLE: ${{ vars.PI_QUALITY_EXECUTABLE }}
+          PI_QUALITY_BASE_URL: ${{ vars.PI_QUALITY_BASE_URL }}
         run: |
           set -euo pipefail
-          echo "Paid provider execution is intentionally not wired in this scaffold." | tee "$RESULTS_ROOT/$CAMPAIGN_ID/summary.md"
-          exit 3
+          if [ "${QUALITY_ALLOW_PAID_PROVIDER:-}" != "true" ]; then
+            echo "Paid provider execution is disabled. Set QUALITY_ALLOW_PAID_PROVIDER=true in the agent-quality environment to enable it." | tee "$RESULTS_ROOT/$CAMPAIGN_ID/summary.md"
+            exit 3
+          fi
+          arms_csv='${{ inputs.arms }}'
+          tasks_csv='${{ inputs.tasks }}'
+          IFS=',' read -r -a arms <<< "$arms_csv"
+          IFS=',' read -r -a tasks <<< "$tasks_csv"
+          arm_count=${#arms[@]}
+          task_count=${#tasks[@]}
+          if [ "$arm_count" -lt 1 ] || [ "$task_count" -lt 1 ]; then
+            echo "arms and tasks must both contain at least one item" >&2
+            exit 2
+          fi
+          total_trials=$(( arm_count * task_count * ${{ fromJSON(inputs.k) }} ))
+          total_budget_ms=$(( ${{ fromJSON(inputs.timeout_minutes) }} * 60 * 1000 ))
+          trial_timeout_ms=$(( total_budget_ms / total_trials ))
+          if [ "$trial_timeout_ms" -lt 30000 ]; then
+            trial_timeout_ms=30000
+          fi
+          args=(
+            evals/quality/cli.ts run
+            --driver '${{ inputs.driver }}'
+            --campaign-id "$CAMPAIGN_ID"
+            --results-root "$RESULTS_ROOT"
+            --provider '${{ inputs.provider }}'
+            --model '${{ inputs.model }}'
+            --thinking '${{ inputs.thinking }}'
+            --arms "$arms_csv"
+            --tasks "$tasks_csv"
+            --k '${{ inputs.k }}'
+            --budget-usd '${{ inputs.budget_usd }}'
+            --max-time-ms "$trial_timeout_ms"
+          )
+          if [ -n "${PI_QUALITY_EXECUTABLE:-}" ]; then
+            args+=( --pi-executable "$PI_QUALITY_EXECUTABLE" )
+          fi
+          if [ '${{ inputs.driver }}' = 'livecraft' ] && [ -n "${PI_QUALITY_BASE_URL:-}" ]; then
+            args+=( --base-url "$PI_QUALITY_BASE_URL" )
+          fi
+          node "${args[@]}"
 
       - name: Redact artifacts before upload
         if: ${{ always() }}
