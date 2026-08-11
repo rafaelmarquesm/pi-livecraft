@@ -40,5 +40,6 @@ Step-by-step walkthroughs for common tasks. Each guide is self-contained: start 
 - **[Run an isolated prompt](/docs/HOW-TO-RUN-ISOLATED-PROMPT.md)** — execute a one-shot prompt in a disposable Pi process.
 - **[Evaluate agent quality](/docs/EVALUATION-STRATEGY.md)** — deterministic graders, matched arms, validity gates, artifacts, variance, and harness experiments.
 - **[Implement Validated Work and Quality Lab](/docs/SPEC-VALIDATED-WORK-AND-QUALITY-LAB.md)** — phased technical spec for planning, evidence gates, review, token attribution, UI, performance, and rollout.
+- **[Prepare the real quality rollout](/docs/QUALITY-ROLLOUT-CHECKLIST.md)** — operational checklist for the blocked paid `standard` vs `validated` campaign and provider-backed metrics.
 
 Feature README files describe ownership, important constraints, and focused tests. Source files and shared TypeScript types remain authoritative for implementation details.
