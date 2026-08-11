@@ -11,6 +11,10 @@ on:
         description: Execution driver. fake is provider-free, pi-direct runs a disposable Pi process, livecraft drives the local HTTP API.
         required: true
         default: fake
+      runs_on:
+        description: JSON string for runs-on. Use "ubuntu-latest" for GitHub-hosted or ["self-hosted","macOS"] for a local OAuth-backed Pi runner.
+        required: true
+        default: '"ubuntu-latest"'
       model:
         description: Model id requested by the campaign.
         required: true
@@ -67,7 +71,7 @@ concurrency:
 jobs:
   quality:
     name: Manual quality campaign
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
     environment: agent-quality
     timeout-minutes: ${{ fromJSON(inputs.timeout_minutes) }}
     steps:
@@ -96,6 +100,22 @@ jobs:
           case "${{ inputs.budget_usd }}" in (*[!0-9.]*|'') echo "budget must be numeric" >&2; exit 2;; esac
           case "${{ inputs.driver }}" in fake|pi-direct|livecraft) ;; *) echo "driver must be fake, pi-direct, or livecraft" >&2; exit 2;; esac
           mkdir -p "$RESULTS_ROOT/$CAMPAIGN_ID"
+
+      - name: Preflight Pi executable for pi-direct
+        if: ${{ !inputs.dry_run && inputs.provider != 'fake' && inputs.driver == 'pi-direct' }}
+        env:
+          PI_QUALITY_EXECUTABLE: ${{ vars.PI_QUALITY_EXECUTABLE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PI_QUALITY_EXECUTABLE:-}" ]; then
+            echo "PI_QUALITY_EXECUTABLE must be set in the agent-quality environment for pi-direct runs." >&2
+            exit 2
+          fi
+          if [ ! -x "$PI_QUALITY_EXECUTABLE" ]; then
+            echo "PI_QUALITY_EXECUTABLE is not executable: $PI_QUALITY_EXECUTABLE" >&2
+            exit 2
+          fi
+          "$PI_QUALITY_EXECUTABLE" --version
 
       - name: Run provider-free fake quality campaign
         if: ${{ inputs.dry_run || inputs.provider == 'fake' }}

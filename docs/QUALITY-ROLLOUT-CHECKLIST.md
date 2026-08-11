@@ -24,6 +24,13 @@ Configure these in the GitHub `agent-quality` environment before a paid run:
 - `PI_QUALITY_BASE_URL=http://127.0.0.1:5174` when using `driver=livecraft`
 - Provider credentials required by the selected Pi provider route
 
+For the current `openai-codex` setup in this repository, the recommended value is:
+
+- `PI_QUALITY_EXECUTABLE=/opt/homebrew/bin/pi`
+
+This only works on a self-hosted runner on the same Mac/user profile that already has Pi OAuth configured.
+GitHub-hosted `ubuntu-latest` runners will not have this path or your OAuth session.
+
 Do not enable the paid gate until budget approval is explicit.
 
 ## Safe dry-run path
@@ -59,6 +66,7 @@ Recommended manual dispatch inputs:
 
 - `provider`: real provider route name
 - `driver`: `pi-direct` unless a maintained Livecraft HTTP test rig is available
+- `runs_on`: JSON string for the runner target. Use `"ubuntu-latest"` for GitHub-hosted fake runs or `["self-hosted","macOS"]` for the local OAuth-backed `openai-codex` path.
 - `model`: exact target model
 - `thinking`: exact target thinking level
 - `arms`: `livecraft-standard,livecraft-validated`
@@ -68,6 +76,24 @@ Recommended manual dispatch inputs:
 - `timeout_minutes`: full workflow budget
 - `campaign_id`: safe identifier such as `real-std-vs-val-2026-08-11`
 - `dry_run`: `false`
+
+### Recommended values for this repository today
+
+- **Smoke paid run**
+  - `provider`: `deepseek`
+  - `driver`: `pi-direct`
+  - `runs_on`: `["self-hosted","macOS"]`
+  - `model`: `deepseek-v4-flash`
+  - `thinking`: `none`
+  - `budget_usd`: `6`
+
+- **Official paid run**
+  - `provider`: `openai-codex`
+  - `driver`: `pi-direct`
+  - `runs_on`: `["self-hosted","macOS"]`
+  - `model`: `gpt-5.4`
+  - `thinking`: `low`
+  - `budget_usd`: `25`
 
 ## Promotion gate reminders
 
@@ -84,6 +110,7 @@ Do not promote `validated` by default until all are true:
 
 - If the workflow exits with the paid gate disabled message, enable `QUALITY_ALLOW_PAID_PROVIDER=true` only after budget approval.
 - If `pi-direct` cannot find `pi`, set `PI_QUALITY_EXECUTABLE` explicitly.
+- If `openai-codex` uses OAuth, run on a self-hosted runner that shares the same authenticated Pi profile.
 - If `livecraft` cannot reach the manager API, verify the HTTP base URL and service availability.
 - If any artifact contains sensitive material, treat the run as invalid, rotate credentials if needed, and re-run after redaction review.
 - If fewer than 3 valid trials land for any arm, do not claim a winner.
