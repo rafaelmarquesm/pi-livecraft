@@ -20,6 +20,7 @@ interface LivecraftSession {
 }
 
 const VALIDATED_WORK_CONFIG_BODY = { mode: 'validated' }
+const VALIDATED_WORK_APPROVE_BODY = { action: 'approve' }
 
 /** Drives generated tasks through Livecraft's local HTTP API and manager path. */
 export function createLivecraftQualityDriver(options: LivecraftDriverOptions = {}): QualityDriver {
@@ -67,6 +68,14 @@ async function runLivecraft(
         `/api/sessions/${encodeURIComponent(session.id)}/validated-work/config`,
         {
           body: JSON.stringify(VALIDATED_WORK_CONFIG_BODY),
+          method: 'POST',
+        },
+        30_000,
+      )
+      await client.request(
+        `/api/sessions/${encodeURIComponent(session.id)}/validated-work/config`,
+        {
+          body: JSON.stringify(VALIDATED_WORK_APPROVE_BODY),
           method: 'POST',
         },
         30_000,

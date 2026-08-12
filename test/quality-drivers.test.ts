@@ -111,6 +111,7 @@ setInterval(() => {}, 1000)
     const messages = rpcLog.trim().split('\n').map((line) => JSON.parse(line).message)
     assert.deepEqual(messages, [
       '/livecraft-validated-work {"mode":"validated"}',
+      '/livecraft-validated-work {"action":"approve"}',
       generatedTaskPrompt('parser-repair', 'seed1'),
     ])
   } finally {
@@ -176,7 +177,7 @@ test('livecraft driver activates validated mode through the backend config endpo
   assert.equal(trial.passed, true)
   assert.deepEqual(trial.observed, qualityManifest.requested)
   assert.deepEqual(trial.tokens, { cacheRead: 0, cacheWrite: 0, input: 20, output: 6 })
-  assert.deepEqual(configBodies, [{ mode: 'validated' }])
+  assert.deepEqual(configBodies, [{ mode: 'validated' }, { action: 'approve' }])
   assert.equal(promptMessages.length, 1)
   assert.equal(promptMessages[0], generatedTaskPrompt('parser-repair', 'seed1'))
 })

@@ -22,7 +22,8 @@ const DEFAULT_TOOLS = ['read', 'grep', 'find', 'ls', 'bash', 'edit', 'write'] as
 const VALIDATED_WORK_EXTENSION = fileURLToPath(
   new URL('../../../pi-extensions/validated-work/index.ts', import.meta.url),
 )
-const VALIDATED_WORK_COMMAND = '/livecraft-validated-work {"mode":"validated"}'
+const VALIDATED_WORK_ACTIVATE_COMMAND = '/livecraft-validated-work {"mode":"validated"}'
+const VALIDATED_WORK_APPROVE_COMMAND = '/livecraft-validated-work {"action":"approve"}'
 
 /** Runs a generated coding task through a disposable `pi --mode rpc --no-session` process. */
 export function createPiDirectQualityDriver(options: PiDirectDriverOptions = {}): QualityDriver {
@@ -70,7 +71,14 @@ async function runPiDirect(
     let settled = true
     try {
       if (validatedArm) {
-        await pi.request({ message: VALIDATED_WORK_COMMAND, type: 'prompt' }, config.timeoutMs)
+        await pi.request(
+          { message: VALIDATED_WORK_ACTIVATE_COMMAND, type: 'prompt' },
+          config.timeoutMs,
+        )
+        await pi.request(
+          { message: VALIDATED_WORK_APPROVE_COMMAND, type: 'prompt' },
+          config.timeoutMs,
+        )
       }
       await Promise.all([
         pi.request({ message: config.prompt, type: 'prompt' }, config.timeoutMs),
