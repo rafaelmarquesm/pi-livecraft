@@ -1,6 +1,6 @@
 # Prepare the real quality rollout
 
-This checklist is the operator runbook for the paid `standard` vs `validated` campaign. The local code path is now wired and dry-run safe. Real provider execution still requires explicit environment approval, credentials, and budget sign-off.
+This checklist is the operator runbook for the paid `standard` vs `validated` campaign. The local code path is now wired and dry-run safe. As of 2026-08-12, the corrected paid smoke and corrected official GPT-5.4 runs have both completed successfully.
 
 ## Current state
 
@@ -13,7 +13,10 @@ This checklist is the operator runbook for the paid `standard` vs `validated` ca
   - bounded per-trial timeouts derived from the workflow timeout
   - artifact redaction before upload
   - manifest, artifact, and summary persistence
-- Paid workflow runs stay blocked until the `agent-quality` environment sets `QUALITY_ALLOW_PAID_PROVIDER=true` and exposes the required runtime variables.
+- Paid workflow runs are no longer blocked in principle. They have been exercised successfully on the self-hosted macOS runner with `PI_QUALITY_EXECUTABLE=/opt/homebrew/bin/pi`.
+- Corrected paid runs observed so far:
+  - `31552939352`: DeepSeek smoke, `standard` 5/9 vs `validated` 6/9
+  - `31583270532`: official `openai-codex / gpt-5.4`, `standard` 6/9 vs `validated` 7/9
 
 ## Required environment variables
 
@@ -106,6 +109,15 @@ Do not promote `validated` by default until all are true:
 5. summary shows acceptable quality gain relative to cost and time
 6. artifact redaction and upload succeeded
 
+Status on 2026-08-12:
+
+- 1: satisfied
+- 2: satisfied for the current three-task decision set
+- 3: satisfied via paid artifacts
+- 4: satisfied via paid artifacts' total duration fields for the current workflow path
+- 5: directionally satisfied, but still small-sample and narrow-decision-set
+- 6: satisfied
+
 ## Recovery and failure handling
 
 - If the workflow exits with the paid gate disabled message, enable `QUALITY_ALLOW_PAID_PROVIDER=true` only after budget approval.
@@ -123,4 +135,4 @@ This checklist is complete when:
 - workflow source is wired to `evals/quality/cli.ts run`
 - paid path requires explicit environment opt-in
 - manifest, artifact, and summary are uploaded for every run
-- remaining blocker is only external approval, credentials, or provider budget
+- remaining blocker is only product policy on whether the current positive-but-narrow result is enough to change the default

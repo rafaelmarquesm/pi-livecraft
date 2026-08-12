@@ -1,7 +1,7 @@
 # Validated Work and Quality Lab acceptance traceability
 
-Date: 2026-08-10  
-Implementation range: `c173b43..db80d41`  
+Date: 2026-08-12
+Implementation range: `c173b43..032cf85`
 Specification: `docs/SPEC-VALIDATED-WORK-AND-QUALITY-LAB.md`
 
 ## Status vocabulary
@@ -25,8 +25,8 @@ Specification: `docs/SPEC-VALIDATED-WORK-AND-QUALITY-LAB.md`
 | 9 | Performance budgets pass | `npm run bench:snapshot`, `npm run bench:memory`, `npm run bench:quality`, `npm run bench:validated-work`, `npm run bench:quality-ui`; packet/state/cache tests | Clean Node 24/Linux + Pi 0.84.1 passed deterministic gates: no-op p95 0.0000ms; cold extraction 1.541ms; incremental p95 2.518ms; summary ≤2KiB; full state 124,674B; aggregate retained heap 177.6KiB/state; review packet 98,048B; snapshot cold 1217.6ms/warm 18.8ms; memory delta +1.6MiB. Real offline Pi PSS was measured for 1/3/10 sessions. Real browser React Profiler measured 200 QualityWidget update commits at p95 2.50ms against the <16ms budget | PASS |
 | 10 | E2E is provider-independent | `npm run test:e2e` | 34 Playwright tests passed using seeded routes/state and no paid provider | PASS |
 | 11 | A/B campaigns produce reproducible artifacts and invalidity gates | `npm run eval:quality:offline`, `npm run bench:quality`, quality campaign/validity/statistics tests | Deterministic fake campaign emits raw JSON/Markdown, fingerprints, invalid reasons, pass@1/pass@k, Wilson interval, paired deltas, cost, time, and small-sample guards | PASS |
-| 12 | A published standard-vs-validated campaign with k>=3 exists before default promotion | Manual `.github/workflows/agent-quality.yml` plus external credentials/budget | Offline k=3 smoke ran, but no real paid 18-valid-trial campaign was authorized or published. Default remains `standard` and `validated` remains Experimental | BLOCKED |
-| 13 | Technical, threat-model, UX, and operations docs are current | Protocol docs, feature READMEs, evaluation README, adapter attribution, settings guide, this matrix | Implementation and operating contracts are documented. This matrix records remaining rollout and benchmark gaps | PASS |
+| 12 | A published standard-vs-validated campaign with k>=3 exists before default promotion | Manual `.github/workflows/agent-quality.yml` plus paid self-hosted runs `31552939352` and `31583270532` | The corrected DeepSeek smoke run and corrected official GPT-5.4 run each completed with 9 valid trials per arm, published redacted artifacts, and provider-backed cost/time metrics. Default promotion remains a product decision rather than a missing acceptance artifact | PASS |
+| 13 | Technical, threat-model, UX, and operations docs are current | Protocol docs, feature READMEs, evaluation README, adapter attribution, settings guide, this matrix, rollout checklist | Implementation and operating contracts are documented, including the corrected paid rollout path and final official result captured on 2026-08-12 | PASS |
 | 14 | Quality CI and E2E are green | GitHub Actions CI run `31382125212`; local format/lint/typecheck/unit/build/E2E runs | Published `origin/main` commit `92c93c1` passed hosted Quality and E2E jobs. Hosted E2E reported 34 passed and one intentional benchmark-only skip | PASS |
 
 ## Public interface and integration-boundary checks
@@ -42,7 +42,7 @@ Specification: `docs/SPEC-VALIDATED-WORK-AND-QUALITY-LAB.md`
 | Review HTTP/store/runner boundary | Code-review packet/output/store tests and review E2E | Read-only packet, strict output, persistence, triage, cost estimate, and selected-send confirmation pass |
 | Usage ledger boundary | Usage ledger and widget tests | Auxiliary records merge by purpose without duplicate costs; legacy usage remains unknown |
 | Campaign filesystem/API/UI boundary | Quality campaign, validity, adapter tests and campaign E2E | Results-root confinement, artifact validation, hidden empty tab, metrics display, and adapters pass |
-| Manual paid workflow | Workflow source inspection and offline runner tests | Inputs, approval environment, provider concurrency, redaction, failure upload, and summary are implemented; external execution is blocked |
+| Manual paid workflow | Workflow source inspection, paid self-hosted runs `31552939352` and `31583270532`, and artifact download | Inputs, approval environment, provider concurrency, redaction, failure upload, and summary are implemented. Real paid runs completed successfully after the driver fixes in `672986b`, `fe21cc7`, and `032cf85` |
 | Production bundle | `npm run build` | Build passed; Vite reported the existing >500kB chunk advisory |
 | Backward compatibility | malformed/legacy parser tests and full serial suite | Legacy usage/settings records remain accepted and malformed external data fails safely |
 
@@ -68,7 +68,7 @@ All twelve provider-independent journeys required by section 14.4 now have direc
 | Command | Result |
 |---|---|
 | `npm run format:check` | PASS |
-| `npm run lint` | PASS with 10 pre-existing warnings and 0 errors |
+| `npm run lint` | PASS with 0 warnings and 0 errors |
 | `npm run typecheck` | PASS |
 | `node --test --test-concurrency=1` | 539 total, 537 passed, 2 skipped, 0 failed |
 | `npm run build` | PASS |
@@ -79,10 +79,11 @@ All twelve provider-independent journeys required by section 14.4 now have direc
 | `npm run eval:quality:offline` | PASS; 15/15 focused offline checks |
 | `npm run bench:validated-work` | PASS; aggregate retained heap measured across 200 active quality states at 177.6 KiB/state against <1 MiB. Node 24/Linux deterministic gates and real offline Pi PSS matrix also passed |
 | `npm run bench:quality-ui` | PASS; 200 real-browser QualityWidget update commits, p95 2.50 ms against <16 ms budget. Instrumentation is benchmark-only |
+| Paid workflow `31552939352` | PASS; corrected DeepSeek smoke on `deepseek-v4-flash`, 9 valid trials per arm, `standard` 5/9 vs `validated` 6/9 |
+| Paid workflow `31583270532` | PASS; corrected official `openai-codex / gpt-5.4`, 9 valid trials per arm, `standard` 6/9 vs `validated` 7/9 with near-flat cost and lower total duration |
 
 ## Remaining acceptance work
 
-1. Run and publish the real paid `standard` vs `validated` campaign with at least 18 valid trials, after explicit credentials and budget approval.
-2. Provider-backed token delta and review latency remain part of that paid rollout. Full-stack manager/backend/browser-ready timing is reported separately from the explicit section-12 budgets.
-
-No default promotion is permitted until item 1 satisfies the promotion gates. The current safe state is `standard` by default with `validated` marked Experimental.
+1. Decide product policy after the corrected official result. The current evidence is directionally positive for `validated`, but the decision set is still narrow and two tasks are saturated.
+2. Broaden the rollout decision set before any default-promotion claim that aims to generalize beyond the current three-task suite.
+3. Keep `standard` as the safe default until that product decision is explicitly recorded. `validated` can remain Experimental with a now-proven positive signal on the corrected official GPT-5.4 run.
