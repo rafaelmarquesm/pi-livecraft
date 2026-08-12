@@ -7,6 +7,7 @@ import {
   type AgentRunConfig,
   type AgentRunResult,
 } from '../driver-support.ts'
+import { fileURLToPath } from 'node:url'
 import { runGeneratedQualityTrial } from '../generated-runner.ts'
 import type { QualityManifest } from '../manifest.ts'
 import type { QualityDriver } from '../runner.ts'
@@ -18,6 +19,10 @@ export interface PiDirectDriverOptions {
 }
 
 const DEFAULT_TOOLS = ['read', 'grep', 'find', 'ls', 'bash', 'edit', 'write'] as const
+const VALIDATED_WORK_EXTENSION = fileURLToPath(
+  new URL('../../../pi-extensions/validated-work/index.ts', import.meta.url),
+)
+const VALIDATED_WORK_COMMAND = '/livecraft-validated-work {"mode":"validated"}'
 
 /** Runs a generated coding task through a disposable `pi --mode rpc --no-session` process. */
 export function createPiDirectQualityDriver(options: PiDirectDriverOptions = {}): QualityDriver {
@@ -41,6 +46,7 @@ async function runPiDirect(
   options: PiDirectDriverOptions,
 ): Promise<AgentRunResult> {
   const startedAt = Date.now()
+  const validatedArm = config.cell.arm === 'livecraft-validated'
   const pi = new RpcJsonLineProcess(
     options.executable ?? 'pi',
     [
@@ -56,13 +62,19 @@ async function runPiDirect(
       config.manifest.requested.thinking,
       '--tools',
       (options.tools ?? DEFAULT_TOOLS).join(','),
-      '--no-extensions',
+      ...(validatedArm ? ['--extension', VALIDATED_WORK_EXTENSION] : ['--no-extensions']),
     ],
     config.workspace,
   )
   try {
     let settled = true
     try {
+      if (validatedArm) {
+        await Promise.all([
+          pi.request({ message: VALIDATED_WORK_COMMAND, type: 'prompt' }, config.timeoutMs),
+          pi.waitForEvent('agent_settled', config.timeoutMs),
+        ])
+      }
       await Promise.all([
         pi.request({ message: config.prompt, type: 'prompt' }, config.timeoutMs),
         pi.waitForEvent('agent_settled', config.timeoutMs),

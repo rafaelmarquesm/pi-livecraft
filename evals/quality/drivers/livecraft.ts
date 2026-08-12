@@ -19,6 +19,8 @@ interface LivecraftSession {
   status?: string
 }
 
+const VALIDATED_WORK_CONFIG_BODY = { mode: 'validated' }
+
 /** Drives generated tasks through Livecraft's local HTTP API and manager path. */
 export function createLivecraftQualityDriver(options: LivecraftDriverOptions = {}): QualityDriver {
   return {
@@ -41,6 +43,7 @@ async function runLivecraft(
   options: LivecraftDriverOptions,
 ): Promise<AgentRunResult> {
   const startedAt = Date.now()
+  const validatedArm = config.cell.arm === 'livecraft-validated'
   const client = new LivecraftHttpClient(
     options.baseUrl ?? 'http://127.0.0.1:5174',
     options.fetchImpl ?? fetch,
@@ -59,6 +62,16 @@ async function runLivecraft(
       level: config.manifest.requested.thinking,
       type: 'set_thinking_level',
     }, 30_000)
+    if (validatedArm) {
+      await client.request(
+        `/api/sessions/${encodeURIComponent(session.id)}/validated-work/config`,
+        {
+          body: JSON.stringify(VALIDATED_WORK_CONFIG_BODY),
+          method: 'POST',
+        },
+        30_000,
+      )
+    }
     await client.command(session.id, { message: config.prompt, type: 'prompt' }, config.timeoutMs)
     const settled = await client.waitForSettled(session.id, config.timeoutMs)
     const snapshot = await client.request<{ state?: unknown; stats?: unknown }>(
