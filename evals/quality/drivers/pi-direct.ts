@@ -70,10 +70,7 @@ async function runPiDirect(
     let settled = true
     try {
       if (validatedArm) {
-        await Promise.all([
-          pi.request({ message: VALIDATED_WORK_COMMAND, type: 'prompt' }, config.timeoutMs),
-          pi.waitForEvent('agent_settled', config.timeoutMs),
-        ])
+        await pi.request({ message: VALIDATED_WORK_COMMAND, type: 'prompt' }, config.timeoutMs)
       }
       await Promise.all([
         pi.request({ message: config.prompt, type: 'prompt' }, config.timeoutMs),

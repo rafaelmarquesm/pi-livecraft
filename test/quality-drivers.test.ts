@@ -77,8 +77,9 @@ rl.on('line', (line) => {
   const request = JSON.parse(line)
   if (request.type === 'prompt') {
     if (logPath) fs.appendFileSync(logPath, JSON.stringify(request) + '\\n')
-    if (!String(request.message).startsWith('/livecraft-validated-work')) fs.writeFileSync('src/config-parser.js', fixed)
-    process.stdout.write(JSON.stringify({ type: 'agent_settled' }) + '\\n')
+    const isValidatedCommand = String(request.message).startsWith('/livecraft-validated-work')
+    if (!isValidatedCommand) fs.writeFileSync('src/config-parser.js', fixed)
+    if (!isValidatedCommand) process.stdout.write(JSON.stringify({ type: 'agent_settled' }) + '\\n')
     process.stdout.write(JSON.stringify({ type: 'response', id: request.id, success: true, data: {} }) + '\\n')
   } else if (request.type === 'get_state') {
     process.stdout.write(JSON.stringify({ type: 'response', id: request.id, success: true, data: { model: { provider: 'fake-provider', id: 'fake-model' }, thinkingLevel: 'none' } }) + '\\n')
